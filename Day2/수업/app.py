@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import requests
+from datetime import date
 
 st.set_page_config(page_title="대출 심사 대시보드", layout="wide")
 
@@ -36,6 +38,57 @@ st.markdown("""
 st.markdown("# 대출 심사 대시보드")
 st.markdown("<p style='color:#7B83B0; margin-top:-12px; font-size:0.95rem;'>대출 신청 데이터와 심사 결과 데이터를 업로드하면 통합 현황을 확인할 수 있습니다.</p>", unsafe_allow_html=True)
 st.markdown("<hr>", unsafe_allow_html=True)
+
+# ── 서울 날씨 ──────────────────────────────────────────────────────────────────
+@st.cache_data(ttl=600)
+def fetch_seoul_weather():
+    today = date.today().isoformat()
+    url = (
+        "https://api.open-meteo.com/v1/forecast"
+        "?latitude=37.5665&longitude=126.9780"
+        "&current=temperature_2m,weathercode"
+        "&hourly=temperature_2m"
+        "&timezone=Asia%2FSeoul"
+        "&forecast_days=1"
+    )
+    resp = requests.get(url, timeout=5)
+    resp.raise_for_status()
+    return resp.json()
+
+WEATHER_ICONS = {
+    range(0, 1): "☀️", range(1, 4): "🌤️", range(4, 50): "☁️",
+    range(51, 68): "🌧️", range(71, 78): "🌨️", range(80, 87): "🌦️",
+    range(95, 100): "⛈️",
+}
+
+def weather_icon(code):
+    for r, icon in WEATHER_ICONS.items():
+        if code in r:
+            return icon
+    return "🌡️"
+
+try:
+    w = fetch_seoul_weather()
+    current_temp = w["current"]["temperature_2m"]
+    current_code = w["current"]["weathercode"]
+    hourly_times = w["hourly"]["time"]
+    hourly_temps = w["hourly"]["temperature_2m"]
+
+    hourly_df = pd.DataFrame({
+        "시간": [t[11:16] for t in hourly_times],
+        "기온 (°C)": hourly_temps,
+    }).set_index("시간")
+
+    st.markdown("### 🌡️ 서울 현재 날씨")
+    wc1, wc2 = st.columns([1, 3], gap="large")
+    with wc1:
+        st.metric(f"{weather_icon(current_code)} 현재 기온", f"{current_temp}°C")
+    with wc2:
+        st.markdown("**오늘 시간별 기온 (°C)**")
+        st.line_chart(hourly_df, color="#FF7043", height=180)
+    st.markdown("<hr>", unsafe_allow_html=True)
+except Exception:
+    pass  # API 호출 실패 시 날씨 섹션 생략
 
 # ── 파일 업로드 ─────────────────────────────────────────────────────────────────
 col_up1, col_up2 = st.columns(2)
