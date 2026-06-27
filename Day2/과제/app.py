@@ -90,8 +90,12 @@ def metric_card(label, value, delta=None, delta_color="normal"):
     delta_html = ""
     if delta is not None:
         color = "#2ecc71" if delta_color == "good" else ("#e74c3c" if delta_color == "bad" else "#aaa")
-        arrow = "▲" if delta > 0 else "▼" if delta < 0 else "─"
-        delta_html = f'<p style="margin:0;font-size:.85rem;color:{color}">{arrow} {abs(delta)}</p>'
+        if isinstance(delta, str):
+            arrow = "▲" if delta.startswith('+') else "▼" if delta.startswith('-') else "─"
+            delta_html = f'<p style="margin:0;font-size:.85rem;color:{color}">{arrow} {delta}</p>'
+        else:
+            arrow = "▲" if delta > 0 else "▼" if delta < 0 else "─"
+            delta_html = f'<p style="margin:0;font-size:.85rem;color:{color}">{arrow} {abs(delta)}</p>'
     return f"""
     <div style="background:#1e1e2e;border-radius:12px;padding:18px 20px;border:1px solid #2a2a3e">
       <p style="margin:0;font-size:.8rem;color:#aaa;letter-spacing:.05em">{label}</p>
