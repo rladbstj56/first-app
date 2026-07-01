@@ -10,6 +10,7 @@ from html import escape
 import pandas as pd
 
 from detect_issues import BAND_SHORT
+from generate_report import build_summary_points, _status
 from reallocate import run_pipeline
 
 INSIGHT_OUT = 'output/insight_report.html'
@@ -69,6 +70,10 @@ td.lnum { text-align: left; font-variant-numeric: tabular-nums; }
 .plan-h { font-size:14px; font-weight:700; margin-bottom:10px; }
 .plan-h .pr { background:#7048e8; color:#fff; border-radius:6px; padding:2px 9px; font-size:12px; margin-right:8px; }
 .callout { background:#f8f6ff; border-radius:8px; padding:14px 18px; font-size:13px; color:#4a3a7a; margin-top:6px; }
+.summary { background:#fff; border-radius:12px; padding:24px 28px; margin-bottom:24px; border-left:5px solid #2d6a4f; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.summary h2 { font-size:16px; margin-bottom:6px; } .summary .note { margin-bottom:12px; }
+.summary ul { list-style:none; } .summary li { font-size:13px; padding:7px 0; border-bottom:1px solid #f0f2f5; }
+.summary li:last-child { border-bottom:none; } .summary li b { color:#2d6a4f; }
 .foot { font-size:12px; color:#999; text-align:center; padding:8px 0 4px; }
 ol.crit { margin:6px 0 0 18px; } ol.crit li { font-size:13px; margin-bottom:8px; }
 """
@@ -125,25 +130,52 @@ def _channel_table(summary):
             + "".join(rows) + "</tbody></table></div>")
 
 
-def _issue_cards(ranked):
+def _exec_summary_html(data):
+    """리포트 최상단 요약 박스 html (갭1) — md와 동일한 build_summary_points를 렌더링만 다르게."""
+    items = "".join(f"<li><b>{escape(label)}</b> · {escape(body)}</li>"
+                    for label, body in build_summary_points(data))
+    return ("<div class='summary'><h2>한눈에 보기 (Executive Summary)</h2>"
+            "<p class='note'>이 박스만으로 '전체 성과 · 지금 할 일 · 위험'을 먼저 판단하도록 요약.</p>"
+            f"<ul>{items}</ul></div>")
+
+
+def _issue_card(r, i, kind, recency, threshold):
+    """손실 이슈 카드 1개 — kind='실행'(예산·운영)이면 '기회손실', '정정'(데이터)이면 '왜곡·추정 금액'."""
+    lever = r['lever']
+    cls = 'budget' if kind == '실행' else 'data'
+    label = '이슈' if kind == '실행' else '정정'
+    amt_label = '기회손실' if kind == '실행' else '왜곡·추정 금액'
+    tag = f"<span class='tag {_LEVER_CLASS.get(lever, 't-na')}'>{escape(lever)}</span>"
+    rows = [f"<div class='issue-row'><b>현상·근거</b> {escape(str(r['note']))}</div>",
+            f"<div class='issue-row'><b>발생</b> {escape(str(r['weeks']))} (빈도 {r['frequency']}주)</div>"]
+    st = _status(r['type'], r['channel'], recency, threshold)
+    if st:
+        rows.append(f"<div class='issue-row'>{escape(st.lstrip('- '))}</div>")
+    return (f"<div class='issue {cls}'>"
+            f"<div class='issue-h'>{label} {i}: {escape(r['channel'])} — {escape(r['type'])} {tag}"
+            f"<span style='margin-left:auto;color:#e63946'>{amt_label} {_won(r['impact_won'])}</span></div>"
+            + "".join(rows) + "</div>")
+
+
+def _issue_cards(ranked, recency, threshold):
     loss = ranked.get('loss')
-    if loss is None or loss.empty:
-        return "<p class='note'>이번 기간에는 임계값을 넘는 손실 이슈가 탐지되지 않았습니다.</p>"
-    cls_map = {'예산': 'budget', '데이터·트래킹': 'data'}
-    cards = []
-    for i, (_, r) in enumerate(loss.head(3).iterrows(), 1):
-        lever = r['lever']
-        tag = f"<span class='tag {_LEVER_CLASS.get(lever, 't-na')}'>{escape(lever)}</span>"
-        cards.append(
-            f"<div class='issue {cls_map.get(lever, '')}'>"
-            f"<div class='issue-h'>이슈 {i}: {escape(r['channel'])} — {escape(r['type'])} {tag}"
-            f"<span style='margin-left:auto;color:#e63946'>임팩트 {_won(r['impact_won'])}</span></div>"
-            f"<div class='issue-row'><b>현상·근거</b> {escape(str(r['note']))}</div>"
-            f"<div class='issue-row'><b>발생</b> {escape(str(r['weeks']))} (빈도 {r['frequency']}주)</div></div>")
-    legend = ("<p class='note'>레버 = 조치 수단: <span class='tag t-budget'>예산</span> 재배분 대상 · "
-              "<span class='tag t-data'>데이터·트래킹</span> 수집·기록 오류(예산 무관) · "
-              "<span class='tag t-ops'>운영·크리에이티브</span> 소재·타겟 개선</p>")
-    return legend + "".join(cards)
+    actionable = loss[loss['lever'] != '데이터·트래킹'] if loss is not None and not loss.empty else None
+    data_fix = loss[loss['lever'] == '데이터·트래킹'] if loss is not None and not loss.empty else None
+
+    out = ["<p class='note'>손실을 <b>예산·운영으로 실행 가능한 손실</b>과 <b>데이터 정정 사안</b>으로 분리 — 성격이 달라 조치도 다름.</p>",
+           "<h4 style='font-size:13px;margin:6px 0 10px'>실행 가능한 손실 (예산·운영 — 바로 조치)</h4>"]
+    if actionable is None or actionable.empty:
+        out.append("<p class='note'>예산·운영 레버로 실행할 손실 이슈 없음.</p>")
+    else:
+        out += [_issue_card(r, i, '실행', recency, threshold) for i, (_, r) in enumerate(actionable.iterrows(), 1)]
+
+    out.append("<h4 style='font-size:13px;margin:16px 0 6px'>데이터 정정 필요 (예산 조치 아님)</h4>")
+    out.append("<p class='note'>아래 금액은 잃은 돈이 아니라 <b>데이터가 왜곡·누락된 규모</b>다. 원본 재확인·수동 보정 대상(수치 신뢰도 이슈).</p>")
+    if data_fix is None or data_fix.empty:
+        out.append("<p class='note'>데이터 정정이 필요한 손실 사안 없음.</p>")
+    else:
+        out += [_issue_card(r, i, '정정', recency, threshold) for i, (_, r) in enumerate(data_fix.iterrows(), 1)]
+    return "".join(out)
 
 
 def _wow_table(wow):
@@ -195,11 +227,13 @@ def build_insight_html(data):
         f'<span>📅 {escape(str(m["date_min"]))} – {escape(str(m["date_max"]))} ({m["n_weeks"]}주)</span>'
         f'<span>📊 원본 {m["n_raw"]}행 · 중복 {m["n_dup"]}·이상치 {m["n_outlier"]}·결측 {m["n_missing"]} 처리</span>'
         '<span>🐍 계산: Python pandas</span></div></div>',
+        _exec_summary_html(data),
         f'<div class="stats-row">{stats}</div>',
         f'<div class="section"><div class="section-title">📊 채널별 ROI 순위</div>'
         f'<p class="note">ROI = 매출 / 광고비 × 100. 오가닉은 광고비 0이라 측정 불가.</p>'
         f'{_roi_bars(data["summary"], data["roi"])}{_channel_table(data["summary"])}</div>',
-        f'<div class="section"><div class="section-title">💡 핵심 이슈 (비즈니스 임팩트 순)</div>{_issue_cards(data["ranked"])}</div>',
+        f'<div class="section"><div class="section-title">💡 핵심 이슈 (비즈니스 임팩트 순)</div>'
+        f'{_issue_cards(data["ranked"], data["recency"], data["threshold"])}</div>',
         f'<div class="section"><div class="section-title">📈 전주 대비 변화율 ({data["wow"].columns[0]} → {data["wow"].columns[1]})</div>{_wow_table(data["wow"])}</div>',
         f'<div class="section"><div class="section-title">🎯 채널 평가 (시장 벤치마크 대비)</div>{_benchmark_table(data["ranked"])}</div>',
     ]

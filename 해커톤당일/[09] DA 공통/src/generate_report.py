@@ -79,25 +79,78 @@ def _roi_rank(roi_df):
     return "\n".join(rows)
 
 
-def _issues(ranked):
-    rows = ["> 손실 이슈는 원(₩) 매출 영향으로 통일해 정렬. 규칙 기반 자동 탐지 결과.\n"]
-    loss = ranked.get('loss')
-    rows.append("### 핵심 이슈 3가지 (손실 임팩트 상위)\n")
-    if loss is None or loss.empty:
-        rows.append("이번 기간에는 임계값을 넘는 손실 이슈(급등·급락·이상치·결측)가 탐지되지 않았습니다.\n")
+def _status(itype, channel, recency, threshold):
+    """이슈가 최근 주차에도 지속되는지 한 줄로 반환 (갭3: 진행 중 vs 해소 구분).
+
+    급등/급락 이슈는 해당 지표의 최근 주차 LOO 편차를 임계값과 비교해 지속/해소를 판정한다.
+    이상치·결측은 특정 일자 데이터 사안이라 '재발' 개념이 아니므로 그 성격만 명시한다.
+    독자가 '지금 불이 났나(지속) 이미 끝난 일인가(해소)'를 알아 긴급도를 가르게 한다.
+    """
+    r = recency.get(channel)
+    if r is None:
+        return ""
+    wk, thr = r['week'], threshold * 100
+    if '과집행' in itype:
+        v, hit = r['spend'], (not pd.isna(r['spend']) and r['spend'] >= thr)
+    elif '집행축소' in itype:
+        v, hit = r['spend'], (not pd.isna(r['spend']) and r['spend'] <= -thr)
+    elif '성과급락' in itype:
+        v = r['revenue']
+        hit = any(not pd.isna(r[m]) and r[m] <= -thr for m in ('revenue', 'conversions'))
+    elif '호재' in itype:
+        v = r['revenue']
+        hit = any(not pd.isna(r[m]) and r[m] >= thr for m in ('revenue', 'conversions'))
     else:
-        for i, (_, r) in enumerate(loss.head(3).iterrows(), 1):
-            rows += [f"**이슈 {i}: {r['channel']} — {r['type']} (임팩트 {won(r['impact_won'])}) `[{r['lever']}]`**",
+        return "- 최근성: 특정 일자 데이터 사안(재발 개념 아님) — 정정 후 재탐지로 확인"
+    if pd.isna(v):
+        return ""
+    tag = "지속(최근 주차도 임계값 초과 — 긴급)" if hit else "해소(최근 주차 정상 범위 — 사후 점검)"
+    return f"- 최근 {wk} 상태: {tag}, 해당 지표 편차 {v:+.1f}%"
+
+
+def _issues(ranked, recency, threshold):
+    rows = ["> 손실 이슈는 원(₩) 매출 영향으로 통일해 정렬하되, **예산·운영으로 실행 가능한 손실**과 "
+            "**데이터 정정 사안**을 분리한다 — 성격이 달라 조치도 다르기 때문. 규칙 기반 자동 탐지 결과.\n"]
+    loss = ranked.get('loss')
+    if loss is None or loss.empty:
+        actionable = data_fix = loss  # 둘 다 None/empty → 아래에서 '없음' 처리
+    else:
+        actionable = loss[loss['lever'] != '데이터·트래킹']
+        data_fix = loss[loss['lever'] == '데이터·트래킹']
+
+    rows.append("### 실행 가능한 손실 (예산·운영 — 바로 조치)\n")
+    if actionable is None or actionable.empty:
+        rows.append("이번 기간 예산·운영 레버로 실행할 손실 이슈는 탐지되지 않았습니다.\n")
+    else:
+        for i, (_, r) in enumerate(actionable.iterrows(), 1):
+            rows += [f"**이슈 {i}: {r['channel']} — {r['type']} (기회손실 {won(r['impact_won'])}) `[{r['lever']}]`**",
+                     f"- 현상·근거: {r['note']}",
+                     f"- 발생: {r['weeks']} (빈도 {r['frequency']}주)"]
+            st = _status(r['type'], r['channel'], recency, threshold)
+            if st:
+                rows.append(st)
+            rows.append(f"- 권장 조치: {REC.get(r['type'], '원인 분석 후 대응')}\n")
+        rows.append("> 예산 레버 손실의 회수분은 재배분 재원이 된다 — 상세 기획은 budget_reallocation.md 참조.\n")
+
+    rows.append("### 데이터 정정 필요 (예산 조치 아님 — 원본·트래킹 확인)\n")
+    rows.append("> 아래 '금액'은 잃은 돈이 아니라 **데이터가 왜곡·누락된 규모**다. 예산 재배분 대상이 아니며 "
+                "원본 재확인·수동 보정으로 해결하는 수치 신뢰도 이슈다.\n")
+    if data_fix is None or data_fix.empty:
+        rows.append("데이터 정정이 필요한 손실 사안은 없습니다.\n")
+    else:
+        for i, (_, r) in enumerate(data_fix.iterrows(), 1):
+            rows += [f"**정정 {i}: {r['channel']} — {r['type']} (왜곡·추정 금액 {won(r['impact_won'])}) `[{r['lever']}]`**",
                      f"- 현상·근거: {r['note']}",
                      f"- 발생: {r['weeks']} (빈도 {r['frequency']}주)",
-                     f"- 권장 조치: {REC.get(r['type'], '원인 분석 후 대응')}\n"]
-        rows.append("> `[레버]`는 조치 수단: **예산**(재배분 대상)·**운영·크리에이티브**(소재·타겟 개선)·"
-                    "**데이터·트래킹**(수집·기록 오류로 예산과 무관). 예산 재배분은 budget_reallocation.md 참조.\n")
+                     f"- 권장 조치: {REC.get(r['type'], '원본 확인')}\n"]
 
     if 'operational' in ranked:
         rows.append("### 운영 관찰 (손실은 아니나 확인 필요)\n")
         for _, r in ranked['operational'].iterrows():
             rows.append(f"- **{r['channel']} {r['type']}** ({r['week']}): {r['note']}")
+            st = _status(r['type'], r['channel'], recency, threshold)
+            if st:
+                rows.append(f"  {st}")
             rows.append(f"  - 권장: {REC.get(r['type'], '담당자 확인')}\n")
 
     if 'quality' in ranked:
@@ -110,6 +163,9 @@ def _issues(ranked):
         rows.append("### 주목할 긍정 신호\n")
         for _, r in ranked['positive'].iterrows():
             rows.append(f"- **{r['channel']} {r['type']}** ({r['week']}): {r['note']} → {REC.get(r['type'], '')}")
+            st = _status(r['type'], r['channel'], recency, threshold)
+            if st:
+                rows.append(f"  {st}")
         rows.append("")
     return "\n".join(rows)
 
@@ -180,6 +236,59 @@ def _opportunity(ranked):
     return "\n".join(rows)
 
 
+def build_summary_points(d):
+    """요약 박스 항목 (라벨, 내용) 리스트 — md·html이 공유(표현만 다르고 수치·판단은 동일).
+
+    한 곳에서만 요약 로직을 만들어 md↔html 불일치를 원천 차단한다(decisions Step 21 원칙).
+    ① 전체 성과 ② 바로 실행할 예산 액션 ③ 최우선 실행 이슈 + 데이터 정정 규모(분리) ④ 최근 안정성.
+    재원 없음·이슈 없음 등 조건부에도 문장이 성립하도록 분기한다.
+    """
+    s, ranked, plans, wow = d['summary'], d['ranked'], d['plans'], d['wow']
+    t = s['total']
+    pts = [("이번 기간 성과",
+            f"총매출 {won(t['total_revenue'])} · 유료 광고비 {won(t['total_spend'])} "
+            f"(MER {t['mer']:.0f}%, 유료 순효율 {t['paid_roi']:.0f}%, 전환 {t['total_conversions']:,.0f}건)")]
+
+    if not plans.empty:
+        p = plans.iloc[0]
+        exp = f", 순증 매출 상한 약 {won(p['expected_won'])}" if not pd.isna(p['expected_won']) else ""
+        pts.append(("바로 실행할 예산 액션",
+                    f"{p['source']} → {p['target']} {won(p['amount_won'])} 재배분{exp} "
+                    f"(우선순위 1순위, 상세: budget_reallocation.md)"))
+    else:
+        pts.append(("예산 액션", "과집행 등 재배분 재원이 없어 현 배분 유지 권장"))
+
+    loss = ranked.get('loss')
+    if loss is not None and not loss.empty:
+        act = loss[loss['lever'] == '예산']
+        if not act.empty:
+            top = act.iloc[0]
+            pts.append(("최우선 실행 이슈",
+                        f"{top['channel']} {top['type']} — 기회손실 {won(top['impact_won'])} "
+                        f"({top['weeks']}), 예산 재배분으로 대응"))
+        data_loss = loss[loss['lever'] == '데이터·트래킹']
+        if not data_loss.empty:
+            pts.append(("데이터 정정 필요(예산 조치 아님)",
+                        f"{len(data_loss)}건, 왜곡·추정 금액 합 {won(data_loss['impact_won'].sum())} "
+                        f"— 원본 재확인·트래킹 점검 대상(손실 아님)"))
+
+    prev, curr = wow.columns[0], wow.columns[1]
+    max_abs = wow['change_pct'].abs().max()
+    stat = "안정적, 급변 없음" if max_abs < 50 else "급변 발생 — 원인 확인 필요"
+    pts.append((f"최근 추세({prev}→{curr})", f"{stat} (최대 변동 {max_abs:.1f}%)"))
+    return pts
+
+
+def _executive_summary(d):
+    """리포트 최상단 요약 박스 md (갭1) — 경영진이 받자마자 성과·액션·위험을 얻도록."""
+    lines = ["## 한눈에 보기 (Executive Summary)\n",
+             "> 상세는 아래 섹션. 이 박스만으로 '전체 성과 · 지금 할 일 · 위험'을 먼저 판단할 수 있게 요약.\n"]
+    for label, body in build_summary_points(d):
+        lines.append(f"- **{label}**: {body}")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _decisions(threshold):
     # 방법론(데이터와 무관하게 고정)만 기술 — 특정 수치·날짜는 데이터마다 달라지므로 넣지 않음.
     # 임계값은 데이터 적응형이라 이번 기간 산출값을 표기(고정 상수 아님).
@@ -207,7 +316,7 @@ def build_report(data_path=DATA, data=None):
         ("데이터 개요", _overview(d['meta'])),
         ("핵심 수치 요약", _summary(s)),
         ("채널별 ROI 순위", _roi_rank(d['roi'])),
-        ("이슈 (비즈니스 임팩트 순)", _issues(ranked)),
+        ("이슈 (비즈니스 임팩트 순)", _issues(ranked, d['recency'], d['threshold'])),
         (f"전주 대비 변화율 ({prev} → {curr})", _wow(wow)),
         ("채널 평가 (시장 벤치마크 대비)", _benchmark(ranked)),
     ]
@@ -216,7 +325,8 @@ def build_report(data_path=DATA, data=None):
     sections.append(("의사결정 로그 요약", _decisions(d['threshold'])))
 
     parts = ["# 마케팅 성과 인사이트 리포트\n",
-             "> 계산: Python (calculate.py) · 이슈 탐지: detect_issues.py · 해석: 규칙 기반 + Claude\n"]
+             "> 계산: Python (calculate.py) · 이슈 탐지: detect_issues.py · 해석: 규칙 기반 + Claude\n",
+             _executive_summary(d)]
     for i, (title, body) in enumerate(sections, 1):
         parts.append(f"## {i}. {title}\n\n{body}")
     report = "\n---\n\n".join(parts)
