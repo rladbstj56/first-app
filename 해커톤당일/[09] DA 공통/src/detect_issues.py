@@ -76,7 +76,7 @@ def _issue(channel, week, itype, category, metric, baseline, actual, impact, not
 
 
 def compute_adaptive_threshold(df, iqr_mult=1.5, floor=0.25):
-    """급등/급락 임계값을 데이터에서 자동 산출한다 (고정 상수 대체). (decisions Step 16)
+    """급등/급락 임계값을 데이터에서 자동 산출한다 (고정 상수 대체). (decisions Step 22)
 
     왜: 고정 35%는 이 데이터셋 하나의 편차 분포에서 노이즈/이벤트 사이 빈 구간을 눈으로 보고 정한
     값이라 '한 데이터에 과적합' 공격에 취약했다. 대신 데이터와 무관한 통계 관례(Tukey 이상치 펜스)로
@@ -89,8 +89,8 @@ def compute_adaptive_threshold(df, iqr_mult=1.5, floor=0.25):
     (company-info)의 절반인 floor로 하한을 둔다 → '통계적으로 튀고 AND 비즈니스적으로도 유의미한 크기'만 이슈.
 
     입력: 정제된 df. 출력: 임계값(fraction, 예 0.25).
-    실측(현재 데이터): 펜스 22.9% < floor 25% → 25% 반환. 노이즈(≤20.5%)와 이벤트(≥36.5%) 사이라
-    고정 35%와 동일한 9건(메타 W5·카카오 W4·이메일 W6)을 탐지하고 노이즈는 배제.
+    실측(현재 데이터): 펜스 22.95% < floor 25% → 25% 반환. 노이즈(≤20.50%)와 이벤트(≥36.49%) 사이
+    빈 구간에 안착해, 지표 단위 9건(=메타 W5·카카오 W4·이메일 W6 3개 이벤트 × 각 3지표)만 탐지하고 노이즈는 배제.
     """
     devs = []
     for _, sub in df.groupby('channel'):
@@ -106,6 +106,26 @@ def compute_adaptive_threshold(df, iqr_mult=1.5, floor=0.25):
     q1, q3 = np.percentile(v, 25), np.percentile(v, 75)
     fence = q3 + iqr_mult * (q3 - q1)
     return max(fence, floor)
+
+
+def compute_recency(df):
+    """각 채널의 '가장 최근 주차' LOO 편차율(%)을 반환 — 과거 탐지된 이슈가 최근에도 지속되는지 판단용.
+
+    왜: 이슈는 대개 과거 주차(예: 메타 W5 과집행)라, 독자가 '지금도 진행 중인가 이미 끝났나'를 알아야
+    긴급 대응(지속)과 사후 학습(해소)을 가른다. 각 채널의 마지막 주차 지표를 LOO 중앙값 기준으로
+    재계산해 편차를 제공한다. 주차 정렬은 compute_wow_change와 동일 키(W2<W10 보장).
+    반환: {channel: {'week': 최근주차, 'spend'/'revenue'/'conversions': 편차율(%)}}
+    """
+    out = {}
+    for ch, sub in df.groupby('channel'):
+        wk = sub.groupby('week')[METRICS].sum()
+        last = sorted(wk.index, key=lambda w: (len(w), w))[-1]
+        rec = {'week': last}
+        for m in METRICS:
+            base = _loo_median(wk[m], last)
+            rec[m] = (wk.loc[last, m] - base) / base * 100 if base > 0 else np.nan
+        out[ch] = rec
+    return out
 
 
 def detect_spike_drop(df, threshold=None):
