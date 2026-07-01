@@ -50,6 +50,9 @@ def _summary(s):
             f"| 전체 마케팅 효율 MER (오가닉 포함) | {t['mer']:.2f}% |",
             f"| 유료 광고 순효율 (오가닉 제외) | {t['paid_roi']:.2f}% |",
             f"| 총 전환수 | {t['total_conversions']:,.0f}건 |\n",
+            "> **오가닉(organic)** = 광고비를 직접 쓰지 않고 들어온 매출(검색 결과·직접 방문·SEO·콘텐츠 등 자연 유입). "
+            "이번 기간 광고 원장에 잡히는 지출이 0이라 ROI 계산 대상에선 빠지지만 매출 기여는 크므로 별도 표기한다"
+            "(규모가 유의미하면 아래 '오가닉 성장 잠재력' 섹션에서 상세 분석).\n",
             "> MER은 경영진용(마케팅 조직 전체 성과), 유료 순효율은 마케팅팀용(광고 운영 효율).\n",
             "### 채널별 합계·파생지표\n",
             "| 채널 | 광고비(원) | 매출(원) | 전환 | ROI(%) | ROAS | CTR(%) | CVR(%) |",
@@ -177,14 +180,16 @@ def _opportunity(ranked):
     return "\n".join(rows)
 
 
-def _decisions():
+def _decisions(threshold):
     # 방법론(데이터와 무관하게 고정)만 기술 — 특정 수치·날짜는 데이터마다 달라지므로 넣지 않음.
+    # 임계값은 데이터 적응형이라 이번 기간 산출값을 표기(고정 상수 아님).
     return ("상세 근거·이력은 decisions.md 참조. 적용한 방법론:\n"
             "- 결측: NaN 유지(0으로 채우지 않음), 집계 자동 제외\n"
             "- 매출 이상치: 채널별 AOV modified z-score>3.5로 동적 탐지 → revenue만 제외(정상 지출·전환 보존)\n"
             "- 완전 중복 행: drop_duplicates로 제거(집계 부풀림 방지)\n"
             "- 전체 ROI: MER(오가닉 포함)·유료 순효율·오가닉 매출 3종 분리 표기\n"
-            "- 이슈 탐지: LOO 중앙값 기준선 + 임계값 35% + 원(₩) 임팩트 정렬. 과집행은 'ROAS 하락' 조건\n"
+            f"- 이슈 탐지: LOO 중앙값 기준선 + 데이터 적응형 임계값(Tukey IQR 펜스, 하한 25%) "
+            f"— 이번 기간 {threshold*100:.0f}% + 원(₩) 임팩트 정렬. 과집행은 'ROAS 하락' 조건\n"
             "- 채널 평가: 내부 순위가 아닌 industry-news 벤치마크 대비 정성 판정\n")
 
 
@@ -208,7 +213,7 @@ def build_report(data_path=DATA, data=None):
     ]
     if 'opportunity' in ranked:   # 유의미한 오가닉이 있을 때만 포함 (없으면 생략, KeyError 방지)
         sections.append(("오가닉 성장 잠재력", _opportunity(ranked)))
-    sections.append(("의사결정 로그 요약", _decisions()))
+    sections.append(("의사결정 로그 요약", _decisions(d['threshold'])))
 
     parts = ["# 마케팅 성과 인사이트 리포트\n",
              "> 계산: Python (calculate.py) · 이슈 탐지: detect_issues.py · 해석: 규칙 기반 + Claude\n"]

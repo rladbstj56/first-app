@@ -10,8 +10,9 @@ import pandas as pd
 
 from calculate import (load_and_clean, compute_summary, compute_channel_roi,
                        compute_wow_change, find_revenue_outliers)
-from detect_issues import (BENCHMARKS, _band, detect_spike_drop, detect_outliers,
-                           detect_missing, evaluate_channels, detect_opportunity, score_and_rank)
+from detect_issues import (BENCHMARKS, _band, compute_adaptive_threshold, detect_spike_drop,
+                           detect_outliers, detect_missing, evaluate_channels,
+                           detect_opportunity, score_and_rank)
 
 DATA = 'data/marketing_performance.csv'
 OUT = 'output/budget_reallocation.md'
@@ -55,7 +56,7 @@ def run_pipeline(data_path=DATA):
     plans = build_plans(funding, targets, s)
     return {
         'meta': _meta(data_path), 'summary': s, 'roi': compute_channel_roi(df),
-        'wow': compute_wow_change(df), 'ranked': ranked,
+        'wow': compute_wow_change(df), 'ranked': ranked, 'threshold': compute_adaptive_threshold(df),
         'funding': funding, 'targets': targets, 'plans': plans,
     }
 

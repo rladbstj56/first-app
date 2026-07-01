@@ -9,10 +9,6 @@ import pandas as pd
 
 from calculate import load_and_clean, find_revenue_outliers
 
-# |편차율| ≥ 35% → 급등/급락. company-info.md의 ±50%는 '전주 대비'용이라 LOO 중앙값 기준엔 부적합.
-# LOO 중앙값 대비 편차 분포에서 실제 이벤트(38~256%)와 노이즈(≤20.5%) 사이 빈 구간(20.5~38%)의
-# 중간값으로 35%를 채택 → 메타 W5·이메일 W6·카카오 W4만 잡고 배경 노이즈는 배제. (decisions Step 14)
-SPIKE_THRESHOLD = 0.35
 METRICS = ['spend', 'revenue', 'conversions']
 
 # industry-news.md 채널별 시장 벤치마크 (하위25%, 평균, 상위25%). 업계 통용 추정치 → 정성 평가용.
@@ -79,21 +75,58 @@ def _issue(channel, week, itype, category, metric, baseline, actual, impact, not
     }
 
 
-def detect_spike_drop(df, threshold=SPIKE_THRESHOLD):
+def compute_adaptive_threshold(df, iqr_mult=1.5, floor=0.25):
+    """급등/급락 임계값을 데이터에서 자동 산출한다 (고정 상수 대체). (decisions Step 16)
+
+    왜: 고정 35%는 이 데이터셋 하나의 편차 분포에서 노이즈/이벤트 사이 빈 구간을 눈으로 보고 정한
+    값이라 '한 데이터에 과적합' 공격에 취약했다. 대신 데이터와 무관한 통계 관례(Tukey 이상치 펜스)로
+    임계값을 매번 자동 계산 → 새 CSV마다 재보정된다. 특정 숫자를 고르지 않으므로 그 공격이 소멸한다.
+
+    로직: 모든 채널×주차×지표의 LOO 중앙값 대비 |편차율| 분포에서 Tukey 상단 펜스(Q3 + iqr_mult×IQR)를
+    이상치 경계로 쓴다. IQR·펜스는 이상치에 강건하고 분포 대칭 가정이 없어(편차 절대값은 우측 왜곡)
+    이 데이터에 맞다. iqr_mult=1.5는 이상치 탐지의 보편 관례라 '왜 이 값이냐'를 도메인이 아닌 통계로 답한다.
+    단, 완전히 잠잠한 기간엔 펜스가 늘 존재해 사소한 변동까지 이슈로 뱉으므로, 회사 규칙 ±50%
+    (company-info)의 절반인 floor로 하한을 둔다 → '통계적으로 튀고 AND 비즈니스적으로도 유의미한 크기'만 이슈.
+
+    입력: 정제된 df. 출력: 임계값(fraction, 예 0.25).
+    실측(현재 데이터): 펜스 22.9% < floor 25% → 25% 반환. 노이즈(≤20.5%)와 이벤트(≥36.5%) 사이라
+    고정 35%와 동일한 9건(메타 W5·카카오 W4·이메일 W6)을 탐지하고 노이즈는 배제.
+    """
+    devs = []
+    for _, sub in df.groupby('channel'):
+        wk = sub.groupby('week')[METRICS].sum()
+        for week in wk.index:
+            for m in METRICS:
+                base = _loo_median(wk[m], week)
+                if base > 0:
+                    devs.append(abs((wk.loc[week, m] - base) / base))
+    if not devs:
+        return floor
+    v = np.array(devs)
+    q1, q3 = np.percentile(v, 25), np.percentile(v, 75)
+    fence = q3 + iqr_mult * (q3 - q1)
+    return max(fence, floor)
+
+
+def detect_spike_drop(df, threshold=None):
     """채널×주차 단위 급등/급락을 탐지한다.
 
+    threshold를 안 주면 compute_adaptive_threshold(df)로 데이터에서 자동 산출한다(고정 상수 없음).
+
     유형(우선순위 순, 한 채널×주차당 1개):
-    1) 광고비급등(과집행) — 광고비 ≥+35% AND ROAS 하락(industry-news 유형A). 손실(₩=기회손실).
+    1) 광고비급등(과집행) — 광고비 편차 ≥+임계값 AND ROAS 하락(industry-news 유형A). 손실(₩=기회손실).
        ROAS 하락 조건이 있어 '광고비는 늘었지만 매출도 비례해 는 건강한 확장'(예: 이메일 W6)은 제외됨.
-    2) 광고비급락(집행축소) — 광고비 ≤-35%. 매출 손실이 아니라 '운영 관찰'(₩ 랭킹 제외).
+    2) 광고비급락(집행축소) — 광고비 편차 ≤-임계값. 매출 손실이 아니라 '운영 관찰'(₩ 랭킹 제외).
        company-info 손실 정의엔 없으나 과제가 이슈로 라벨(카카오 W4)했고 ±50% 양방향이라 보고는 함.
-    3) 성과급락 — 광고비 정상인데 매출/전환 ≤-35%. 손실(₩=놓친매출).
-    4) 성과호재 — 매출/전환 ≥+35%(과집행 아님). 긍정 신호(별도).
+    3) 성과급락 — 광고비 정상인데 매출/전환 편차 ≤-임계값. 손실(₩=놓친매출).
+    4) 성과호재 — 매출/전환 편차 ≥+임계값(과집행 아님). 긍정 신호(별도).
 
     기준선은 '판정 주차 제외 나머지 주차 중앙값(leave-one-out median)'. company-info 문구는
     '전주 대비(WoW)'이나 WoW는 직전 주가 이상하면 반동 가짜 이슈를 만든다(실측: 카카오 W4 딥 다음
-    W5가 +52%로 오탐). 중앙값은 이에 강건. 임계값도 전주 대비용 50%가 아닌 35%로 재조정(위 상수 주석).
+    W5가 +52%로 오탐). 중앙값은 이에 강건. 임계값도 전주 대비용 고정 50%가 아니라 데이터 적응형으로 산출.
     """
+    if threshold is None:
+        threshold = compute_adaptive_threshold(df)
     issues = []
     for ch, sub in df.groupby('channel'):
         wk = sub.groupby('week')[METRICS].sum()
