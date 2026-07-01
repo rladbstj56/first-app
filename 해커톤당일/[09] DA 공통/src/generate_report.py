@@ -55,15 +55,18 @@ def _summary(s):
             "(규모가 유의미하면 아래 '오가닉 성장 잠재력' 섹션에서 상세 분석).\n",
             "> MER은 경영진용(마케팅 조직 전체 성과), 유료 순효율은 마케팅팀용(광고 운영 효율).\n",
             "### 채널별 합계·파생지표\n",
-            "| 채널 | 광고비(원) | 매출(원) | 전환 | ROI(%) | ROAS | CTR(%) | CVR(%) |",
-            "|------|-----------|---------|------|--------|------|--------|--------|"]
+            "| 채널 | 광고비(원) | 매출(원) | 전환 | ROI(%) | ROAS | CPA(원) | CTR(%) | CVR(%) |",
+            "|------|-----------|---------|------|--------|------|---------|--------|--------|"]
     g = s['by_channel']
     for ch in g.sort_values('revenue', ascending=False).index:   # 채널 목록을 데이터에서 동적으로
         r = g.loc[ch]
         roi = "측정불가" if pd.isna(r['ROI']) else f"{r['ROI']:.2f}"
         roas = "-" if pd.isna(r['ROAS']) else f"{r['ROAS']:.2f}"
+        cpa = "-" if pd.isna(r['CPA']) else f"{r['CPA']:,.0f}"
         rows.append(f"| {ch} | {r['spend']:,.0f} | {r['revenue']:,.0f} | {r['conversions']:,.0f} | "
-                    f"{roi} | {roas} | {r['CTR']:.2f} | {r['CVR']:.2f} |")
+                    f"{roi} | {roas} | {cpa} | {r['CTR']:.2f} | {r['CVR']:.2f} |")
+    rows.append("\n> **CPA(전환당 비용)** = 광고비 / 전환. 낮을수록 효율적(입찰·예산 조정의 직접 지표). "
+                "오가닉은 광고비 0이라 측정 제외(-).")
     return "\n".join(rows) + "\n"
 
 

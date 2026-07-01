@@ -88,6 +88,7 @@ def compute_summary(df):
     )
     g['ROI'] = (g['revenue'] / g['spend'] * 100).where(g['spend'] > 0)
     g['ROAS'] = (g['revenue'] / g['spend']).where(g['spend'] > 0)
+    g['CPA'] = (g['spend'] / g['conversions']).where(g['spend'] > 0)  # 전환당 광고비. 오가닉(spend=0)은 측정 제외(NaN)
     g['CTR'] = g['clicks'] / g['impressions'] * 100
     g['CVR'] = g['conversions'] / g['clicks'] * 100
     return {'total': total, 'by_channel': g}

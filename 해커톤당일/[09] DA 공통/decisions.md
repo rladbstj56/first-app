@@ -275,3 +275,12 @@
 - 문제2(버그): score_and_rank의 weeks 집계가 `','.join(sorted(s))`라 같은 주에 여러 날 잡히는 이상치의 주차가 중복 출력됨(예: 'W7,W7,W7,W7,W7,W7,W7,W8,...'). frequency는 nunique라 정상이나 표시 문자열만 오류. → `sorted(set(s), key=W2<W10 정렬)`로 dedup+정렬. 발생란이 'W7,W8'로 정상화.
 - 검증: 합성 다중이슈 데이터에서 실행 3건(이슈1~3)·정정 3건(정정1~3)·운영 2건(관찰1~2)·품질 2건(품질1~2)·긍정 1건 모두 번호 통일 확인. 이상치 주차 'W7,W8' 정상. verify_reproducibility 4케이스(원본·A·B·C) 전체 통과, 회귀 없음.
 - 변경 파일: generate_report.py(_issues 운영·품질·긍정 번호 부여), generate_html.py(_note_card 추가·_issue_cards에 운영·긍정·품질 렌더), detect_issues.py(score_and_rank weeks dedup).
+
+**[Step 26] 채널 테이블에 CPA(전환당 비용) 추가 (갭4)**
+- 배경: 리포트 실행성 검토(갭4)에서 마케터가 입찰·예산 조정에 매일 쓰는 CPA가 채널 테이블에 없었음. 광고비·전환수가 이미 있어 파생만 하면 됨.
+- 결정: by_channel에 CPA = 광고비 / 전환 추가. 오가닉(spend=0)은 ROI/ROAS와 동일하게 측정 제외(NaN → '-' 표기) — 광고비 0인 채널에 전환당 '광고비'는 정의 불가하고, '오가닉은 무료 아님'(Step 24) 프레이밍과도 일관.
+- 가치: 메타 CPA 6,468원(최고)·이메일 1,970원(최저)로, 메타 과집행/축소 결론을 원가 지표로 직접 뒷받침. ROAS(수익 관점)와 CPA(비용 관점)를 함께 봐 예산 판단 근거 보강.
+- 배치: 효율 지표군(ROI·ROAS 옆)에 두고 CTR·CVR(퍼널) 앞. 정의 각주 병기.
+- 미반영: 갭5(재배분안 인라인)는 Executive Summary 박스(Step 24)가 headline 재배분을 이미 인라인 표기해 목표 충족 → 추가 시 중복만 늘어 현 상태 유지.
+- 변경 파일: calculate.py(CPA 파생), generate_report.py(md 표 컬럼·각주), generate_html.py(html 표 컬럼·각주).
+- 검증: 원본 CPA(이메일 1,970 / 네이버 2,776 / 카카오 5,020 / 메타 6,468 / 오가닉 -) 정상. verify_reproducibility 4케이스 전체 통과.

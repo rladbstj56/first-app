@@ -121,12 +121,14 @@ def _channel_table(summary):
         r = g.loc[ch]
         roi = "측정불가" if pd.isna(r['ROI']) else f"{r['ROI']:.2f}%"
         roas = "–" if pd.isna(r['ROAS']) else f"{r['ROAS']:.2f}"
+        cpa = "–" if pd.isna(r['CPA']) else f"{r['CPA']:,.0f}"
         rows.append(f"<tr><td>{escape(ch)}</td><td class='num'>{r['spend']:,.0f}</td>"
                     f"<td class='num'>{r['revenue']:,.0f}</td><td class='num'>{r['conversions']:,.0f}</td>"
-                    f"<td class='num'>{roi}</td><td class='num'>{roas}</td>"
+                    f"<td class='num'>{roi}</td><td class='num'>{roas}</td><td class='num'>{cpa}</td>"
                     f"<td class='num'>{r['CTR']:.2f}%</td><td class='num'>{r['CVR']:.2f}%</td></tr>")
-    return ("<div class='tbl-wrap'><table><thead><tr><th>채널</th><th>광고비</th><th>매출</th>"
-            "<th>전환</th><th>ROI</th><th>ROAS</th><th>CTR</th><th>CVR</th></tr></thead><tbody>"
+    return ("<p class='note'>CPA(전환당 비용) = 광고비 / 전환. 낮을수록 효율적. 오가닉은 광고비 0이라 측정 제외(–).</p>"
+            "<div class='tbl-wrap'><table><thead><tr><th>채널</th><th>광고비</th><th>매출</th>"
+            "<th>전환</th><th>ROI</th><th>ROAS</th><th>CPA</th><th>CTR</th><th>CVR</th></tr></thead><tbody>"
             + "".join(rows) + "</tbody></table></div>")
 
 
