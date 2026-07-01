@@ -146,27 +146,30 @@ def _issues(ranked, recency, threshold):
 
     if 'operational' in ranked:
         rows.append("### 운영 관찰 (손실은 아니나 확인 필요)\n")
-        for _, r in ranked['operational'].iterrows():
-            rows.append(f"- **{r['channel']} {r['type']}** ({r['week']}): {r['note']}")
+        for i, (_, r) in enumerate(ranked['operational'].iterrows(), 1):
+            rows += [f"**관찰 {i}: {r['channel']} — {r['type']} ({r['week']})**",
+                     f"- 현상·근거: {r['note']}"]
             st = _status(r['type'], r['channel'], recency, threshold)
             if st:
-                rows.append(f"  {st}")
-            rows.append(f"  - 권장: {REC.get(r['type'], '담당자 확인')}\n")
+                rows.append(st)
+            rows.append(f"- 권장 조치: {REC.get(r['type'], '담당자 확인')}\n")
 
     if 'quality' in ranked:
         rows.append("### 데이터 수집 품질 이슈\n")
-        for _, r in ranked['quality'].iterrows():
-            rows.append(f"- {r['note']} → {REC.get(r['type'], '트래킹 점검')}")
-        rows.append("")
+        for i, (_, r) in enumerate(ranked['quality'].iterrows(), 1):
+            rows += [f"**품질 {i}: {r['channel']} — {r['type']} ({r['week']})**",
+                     f"- 현상·근거: {r['note']}",
+                     f"- 권장 조치: {REC.get(r['type'], '트래킹 점검')}\n"]
 
     if 'positive' in ranked:
         rows.append("### 주목할 긍정 신호\n")
-        for _, r in ranked['positive'].iterrows():
-            rows.append(f"- **{r['channel']} {r['type']}** ({r['week']}): {r['note']} → {REC.get(r['type'], '')}")
+        for i, (_, r) in enumerate(ranked['positive'].iterrows(), 1):
+            rows += [f"**긍정 {i}: {r['channel']} — {r['type']} ({r['week']})**",
+                     f"- 현상·근거: {r['note']}"]
             st = _status(r['type'], r['channel'], recency, threshold)
             if st:
-                rows.append(f"  {st}")
-        rows.append("")
+                rows.append(st)
+            rows.append(f"- 권장 조치: {REC.get(r['type'], '성공 요인 분석 후 확대 검토')}\n")
     return "\n".join(rows)
 
 

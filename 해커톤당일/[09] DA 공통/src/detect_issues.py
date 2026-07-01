@@ -332,7 +332,8 @@ def score_and_rank(all_issues):
             impact_won=('impact_won', 'sum'),
             recoverable_won=('recoverable_won', 'sum'),
             frequency=('week', 'nunique'),
-            weeks=('week', lambda s: ','.join(sorted(s))),
+            # 같은 주에 여러 날 잡히는 이상치는 주차가 중복되므로 dedup + W2<W10 정렬(표시용).
+            weeks=('week', lambda s: ','.join(sorted(set(s), key=lambda w: (len(str(w)), str(w))))),
             note=('note', 'first'),
         ).reset_index().sort_values('impact_won', ascending=False)
         out['loss'] = agg

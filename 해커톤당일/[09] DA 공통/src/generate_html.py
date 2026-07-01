@@ -157,24 +157,52 @@ def _issue_card(r, i, kind, recency, threshold):
             + "".join(rows) + "</div>")
 
 
+def _note_card(r, i, label, recency, threshold, show_status):
+    """운영관찰·긍정·품질 항목 카드 — 번호 헤더 + 현상·최근성(선택)으로 loss 카드와 형식 통일."""
+    rows = [f"<div class='issue-row'><b>현상·근거</b> {escape(str(r['note']))}</div>"]
+    if show_status:
+        st = _status(r['type'], r['channel'], recency, threshold)
+        if st:
+            rows.append(f"<div class='issue-row'>{escape(st.lstrip('- '))}</div>")
+    return (f"<div class='issue data'>"
+            f"<div class='issue-h'>{label} {i}: {escape(r['channel'])} — {escape(r['type'])} "
+            f"<span class='tag t-na'>{escape(str(r['week']))}</span></div>"
+            + "".join(rows) + "</div>")
+
+
 def _issue_cards(ranked, recency, threshold):
     loss = ranked.get('loss')
     actionable = loss[loss['lever'] != '데이터·트래킹'] if loss is not None and not loss.empty else None
     data_fix = loss[loss['lever'] == '데이터·트래킹'] if loss is not None and not loss.empty else None
 
+    def _h4(text, mt='16px'):
+        return f"<h4 style='font-size:13px;margin:{mt} 0 8px'>{text}</h4>"
+
     out = ["<p class='note'>손실을 <b>예산·운영으로 실행 가능한 손실</b>과 <b>데이터 정정 사안</b>으로 분리 — 성격이 달라 조치도 다름.</p>",
-           "<h4 style='font-size:13px;margin:6px 0 10px'>실행 가능한 손실 (예산·운영 — 바로 조치)</h4>"]
+           _h4("실행 가능한 손실 (예산·운영 — 바로 조치)", '6px')]
     if actionable is None or actionable.empty:
         out.append("<p class='note'>예산·운영 레버로 실행할 손실 이슈 없음.</p>")
     else:
         out += [_issue_card(r, i, '실행', recency, threshold) for i, (_, r) in enumerate(actionable.iterrows(), 1)]
 
-    out.append("<h4 style='font-size:13px;margin:16px 0 6px'>데이터 정정 필요 (예산 조치 아님)</h4>")
+    out.append(_h4("데이터 정정 필요 (예산 조치 아님)"))
     out.append("<p class='note'>아래 금액은 잃은 돈이 아니라 <b>데이터가 왜곡·누락된 규모</b>다. 원본 재확인·수동 보정 대상(수치 신뢰도 이슈).</p>")
     if data_fix is None or data_fix.empty:
         out.append("<p class='note'>데이터 정정이 필요한 손실 사안 없음.</p>")
     else:
         out += [_issue_card(r, i, '정정', recency, threshold) for i, (_, r) in enumerate(data_fix.iterrows(), 1)]
+
+    # 운영관찰·긍정·품질도 md와 동일하게 번호 카드로 렌더 (형식 통일).
+    for cat, title, label, show_status in [
+        ('operational', '운영 관찰 (손실은 아니나 확인 필요)', '관찰', True),
+        ('positive', '주목할 긍정 신호', '긍정', True),
+        ('quality', '데이터 수집 품질 이슈', '품질', False),
+    ]:
+        sub = ranked.get(cat)
+        if sub is not None and not sub.empty:
+            out.append(_h4(title))
+            out += [_note_card(r, i, label, recency, threshold, show_status)
+                    for i, (_, r) in enumerate(sub.iterrows(), 1)]
     return "".join(out)
 
 

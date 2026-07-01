@@ -268,3 +268,10 @@
 - 미반영(사용자 판단): 갭4(CPA 지표 추가)·갭5(재배분안 인라인) 및 채널별 WoW·재배분 규모 프레이밍은 이번 범위 제외.
 - 변경 파일: generate_report.py(build_summary_points·_executive_summary·_status 추가, _issues 2블록 개편), generate_html.py(_exec_summary_html·_issue_card 추가, _issue_cards 개편, summary CSS), detect_issues.py(compute_recency 추가), reallocate.py(run_pipeline에 recency 노출).
 - 검증: verify_reproducibility 4케이스 전체 통과(원본·A 4주무재원·B 오가닉없음·C 주차재라벨). 요약/분리/최근성이 조건부 데이터에도 문장 성립. md·html 동일 결과 공유.
+
+**[Step 25] 이슈 섹션 형식 통일(번호 부여) + 이상치 주차 중복 표기 버그 수정**
+- 배경: 데이터 변경 시 재현성·형식 통일성 점검 중, 다중 이슈 합성 데이터(채널×주차 여러 개 조작)로 두 문제 발견.
+- 문제1(형식 불일치): 실행 손실·데이터 정정은 '이슈 N:/정정 N:'으로 번호가 붙는데 운영 관찰·데이터 품질·긍정 신호는 번호 없이 불릿(`- **채널 유형**`)으로만 출력 → 이슈가 여러 개일 때 카테고리 간 형식이 어긋남(예: 운영 관찰이 '카카오광고'만 번호 없이 노출). → 다섯 하위 섹션 모두 `**라벨 N: 채널 — 유형 (발생/금액)**` + `- 현상·근거/최근 상태/권장 조치` 통일 형식으로 번호 부여(관찰 N·품질 N·긍정 N). md·html 동일 적용. 부수로 html은 그간 운영·긍정·품질 섹션을 렌더링하지 않아 md보다 부족했던 것도 함께 해소(_note_card 추가) → md↔html 내용 일치.
+- 문제2(버그): score_and_rank의 weeks 집계가 `','.join(sorted(s))`라 같은 주에 여러 날 잡히는 이상치의 주차가 중복 출력됨(예: 'W7,W7,W7,W7,W7,W7,W7,W8,...'). frequency는 nunique라 정상이나 표시 문자열만 오류. → `sorted(set(s), key=W2<W10 정렬)`로 dedup+정렬. 발생란이 'W7,W8'로 정상화.
+- 검증: 합성 다중이슈 데이터에서 실행 3건(이슈1~3)·정정 3건(정정1~3)·운영 2건(관찰1~2)·품질 2건(품질1~2)·긍정 1건 모두 번호 통일 확인. 이상치 주차 'W7,W8' 정상. verify_reproducibility 4케이스(원본·A·B·C) 전체 통과, 회귀 없음.
+- 변경 파일: generate_report.py(_issues 운영·품질·긍정 번호 부여), generate_html.py(_note_card 추가·_issue_cards에 운영·긍정·품질 렌더), detect_issues.py(score_and_rank weeks dedup).
