@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>마케팅 성과 경영진 요약 리포트</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif; background: #f4f5f7; color: #1a1a2e; line-height: 1.6; }
+.container { max-width: 1080px; margin: 0 auto; padding: 40px 24px; }
+.header { background: #fff; border-radius: 12px; padding: 32px 36px; margin-bottom: 24px; border-left: 5px solid #2d6a4f; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.header.rx { border-left-color: #7048e8; }
+.badge { display: inline-block; background: #2d6a4f; color: #fff; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px; margin-bottom: 14px; letter-spacing: .5px; }
+.badge.rx { background: #7048e8; }
+.header h1 { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+.header-meta { font-size: 13px; color: #6c757d; display: flex; flex-wrap: wrap; gap: 16px; }
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.stat { background: #f8f9fb; border-radius: 10px; padding: 20px; text-align: center; border-top: 4px solid; }
+.stat-n { font-size: 28px; font-weight: 800; letter-spacing: -.3px; }
+.stat-label { font-size: 13px; color: #666; margin-top: 2px; }
+.stat-sub { font-size: 12px; color: #999; margin-top: 4px; }
+.c-red { border-color: #e63946; color: #e63946; } .c-blue { border-color: #4361ee; color: #4361ee; }
+.c-green { border-color: #2d6a4f; color: #2d6a4f; } .c-purple { border-color: #7048e8; color: #7048e8; }
+.section { background: #fff; border-radius: 12px; padding: 28px 32px; margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.section-title { font-size: 19px; font-weight: 700; padding-bottom: 14px; margin-bottom: 20px; border-bottom: 1px solid #eee; }
+.section-sub { font-size: 16px; font-weight: 700; color: #2d6a4f; margin: 26px 0 14px; padding-top: 18px; border-top: 1px dashed #e3e6ea; } .section-sub:first-of-type { margin-top: 4px; padding-top: 0; border-top: none; }
+.note { font-size: 12px; color: #888; margin-bottom: 14px; }
+.bar-row { margin-bottom: 12px; }
+.bar-meta { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; font-weight: 600; }
+.bar-track { background: #f0f2f5; border-radius: 6px; height: 30px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding-left: 12px; color: #fff; font-size: 12px; font-weight: 700; }
+.bar-na { height: 30px; background: repeating-linear-gradient(45deg,#eef0f3,#eef0f3 8px,#e3e6ea 8px,#e3e6ea 16px); border-radius: 6px; display: flex; align-items: center; padding-left: 12px; color: #888; font-size: 12px; font-weight: 700; }
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { background: #f8f9fa; font-size: 12px; font-weight: 700; color: #6c757d; padding: 10px 12px; text-align: left; border-bottom: 2px solid #e9ecef; white-space: nowrap; }
+tbody td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
+tbody tr:hover { background: #f8f9fb; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.lnum { text-align: left; font-variant-numeric: tabular-nums; }
+.rank { font-weight: 800; color: #4361ee; }
+td.led { font-weight: 800; color: #1f5c3d; background: #eaf6f0; }
+.tag { display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:5px; }
+.t-best { background:#d0ebe0; color:#1f5c3d; } .t-mid { background:#dde3ff; color:#3452cc; }
+.t-low { background:#fff3cd; color:#856404; } .t-na { background:#e9ecef; color:#495057; }
+.t-budget { background:#ffe0d6; color:#b5341a; } .t-data { background:#e9ecef; color:#495057; }
+.t-ops { background:#dde3ff; color:#3452cc; } .t-strat { background:#e7dcff; color:#5b34b5; }
+.chg-up { color:#2d6a4f; font-weight:700; } .chg-down { color:#e63946; font-weight:700; }
+.issue { border:1px solid #eee; border-left:4px solid #e63946; border-radius:8px; padding:16px 18px; margin-bottom:14px; }
+.issue.budget { border-left-color:#e8590c; } .issue.data { border-left-color:#868e96; }
+.issue.positive { border-left-color:#2d6a4f; }
+.issue-h { font-size:14px; font-weight:700; margin-bottom:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.issue-row { font-size:13px; margin-top:4px; } .issue-row b { color:#555; }
+.plan { border:1px solid #e7dcff; border-left:4px solid #7048e8; border-radius:8px; padding:18px 20px; margin-bottom:16px; }
+.plan-h { font-size:14px; font-weight:700; margin-bottom:10px; }
+.plan-h .pr { background:#7048e8; color:#fff; border-radius:6px; padding:2px 9px; font-size:12px; margin-right:8px; }
+.callout { background:#f8f6ff; border-radius:8px; padding:16px 20px; font-size:16px; color:#3d2f66; margin-top:8px; line-height:1.7; } .callout li { margin-bottom:6px; }
+.mom-lead { font-size:15px; color:#333; font-weight:600; margin-bottom:12px; line-height:1.6; }
+.budget-h { font-size:17px; font-weight:800; color:#3d2f66; margin-bottom:10px; line-height:1.5; }
+.budget-line { font-size:15px; color:#4a3a7a; margin-top:9px; line-height:1.7; }
+.budget-line b { color:#3d2f66; }
+.summary { background:#fff; border-radius:12px; padding:24px 28px; margin-bottom:24px; border-left:5px solid #2d6a4f; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.summary h2 { font-size:19px; margin-bottom:6px; } .summary .note { margin-bottom:12px; }
+.summary ul { list-style:none; } .summary li { font-size:16px; padding:11px 0; border-bottom:1px solid #f0f2f5; line-height:1.55; }
+.summary li:last-child { border-bottom:none; } .summary li b { color:#2d6a4f; }
+.win-tag { display:inline-block; font-size:10px; font-weight:700; padding:1px 8px; border-radius:8px; margin-left:6px; vertical-align:1px; }
+.win-2w { background:#e7f5ee; color:#2d6a4f; } .win-8w { background:#fff4e6; color:#e8590c; }
+.li-note { font-size:11.5px; color:#999; margin-top:4px; line-height:1.5; }
+.issue-detail { font-size:14px; color:#444; margin-top:8px; line-height:1.7; }
+.issue-detail b { color:#333; }
+.def-note { font-size:12px; color:#888; margin:2px 0 14px; line-height:1.6; } .def-note b { color:#555; }
+.foot { font-size:12px; color:#999; text-align:center; padding:8px 0 4px; }
+ol.crit { margin:6px 0 0 18px; } ol.crit li { font-size:13px; margin-bottom:8px; }
+.playbook { border-left:5px solid #e8590c; }
+.pb-rank { font-weight:800; color:#e8590c; text-align:center; }
+.when-now { color:#e63946; font-weight:700; } .when-wk { color:#e8590c; font-weight:700; } .when-mo { color:#6c757d; font-weight:600; }
+td.owner { color:#495057; white-space:nowrap; }
+.plan-lead { background:#f8f6ff; border-radius:8px; padding:13px 16px; font-size:14px; line-height:1.7; margin:2px 0 14px; }
+.plan-lead b { color:#5b34b5; }
+.flow { display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap; margin:6px 0 16px; }
+.flow-node { border-radius:10px; padding:12px 18px; text-align:center; min-width:132px; }
+.flow-node.from { border:2px solid #f1b0b7; background:#fff5f4; }
+.flow-node.to { border:2px solid #9dc9b4; background:#f2f9f5; }
+.flow-node .fn-name { font-weight:700; font-size:15px; }
+.flow-node .fn-roas { font-size:11px; color:#777; margin-top:3px; }
+.flow-node .fn-amt { font-size:14px; font-weight:800; margin-top:7px; }
+.fn-amt.neg { color:#e63946; } .fn-amt.pos { color:#2d6a4f; }
+.flow-arrow { text-align:center; color:#7048e8; line-height:1.35; }
+.flow-arrow .fa-amt { font-size:13px; font-weight:700; } .flow-arrow .fa-line { font-size:24px; }
+.ratio { display:inline-block; background:#7048e8; color:#fff; font-size:11px; font-weight:700; padding:2px 9px; border-radius:11px; margin-top:3px; }
+.plan .subhead { font-size:12px; color:#999; margin:12px 0 6px; font-weight:700; }
+.aud { background:#2d6a4f; color:#fff !important; padding:3px 10px; border-radius:12px; font-weight:600; }
+/* 마케팅팀 상세본(insight_report)만 본문 글씨를 키운다 — 경영진 요약본(container.rx)은 제외.
+   제목(.section-title 등)은 그대로 두고, 표·이슈·체크리스트 같은 '읽고 판단하는' 본문 텍스트만 대상. */
+.container:not(.rx) .note { font-size: 14px; }
+.container:not(.rx) table { font-size: 15px; }
+.container:not(.rx) thead th { font-size: 13px; }
+.container:not(.rx) .issue-row { font-size: 15px; }
+.container:not(.rx) .issue-h { font-size: 16px; }
+.container:not(.rx) .plan-lead { font-size: 16px; }
+.container:not(.rx) ol.crit li { font-size: 15px; }
+.container:not(.rx) .callout { font-size: 17px; }
+</style>
+</head>
+<body>
+<div class="container rx">
+<div class="header rx"><span class="badge rx">경영진 요약</span><span class="badge rx" style="background:#b91c1c">최근 2주(W7→W8) 전주 대비 기준</span><h1>마케팅 성과 경영진 요약 리포트</h1><div class="header-meta"><span class="aud">대상: 경영진</span><span>분석 기준: 최근 2주 (W7→W8) 전주 대비 · 성과 수치는 최근 2주 합계</span><span>이 한 장으로 성과·위험·예산 결정 판단 · 8주 전체 상세는 마케팅팀 리포트</span></div></div>
+<div class='summary'><h2>핵심 요약</h2><div class='def-note'><b>MER</b> = 총매출÷광고비(오가닉 포함 전체 마케팅 효율) · <b>유료 순효율</b> = 유료매출÷광고비(광고 자체만의 효율) · <b>오가닉</b> = 광고비 없이 자연 유입된 매출(검색·직접방문·SEO 등)</div><ul><li><b>최근 2주 성과 (W7→W8)</b><span class="win-tag win-2w">최근 2주</span> · 총매출 1.15억원 · 유료 광고비 1,251만원 (MER 920%, 유료 순효율 695%, 전환 5,940건)</li><li><b>가장 시급한 예산 리스크</b><span class="win-tag win-8w">8주 누적</span> · 메타광고 예산 과집행으로 882만원 기회손실 발생(W5). 초과 지출분 회수 후 예산 재배분으로 대응 예정.</li><li><b>예산 재배분 승인 요청</b><span class="win-tag win-8w">8주 누적</span> · 메타광고 과집행 회수분 319만원을(를) 시장 벤치마크 우수 채널 네이버광고로 재배분(1순위). 최대 1,277만원 순증 매출 기대(선형확장 가정). (상세: 예산 재배분 기획안 섹션)</li><li><b>최근 추세(W7→W8)</b><span class="win-tag win-2w">최근 2주</span> · 매출·지출의 전주 대비 안정성 지표(변동폭 50% 초과 시 급변 판정) — 안정적, 급변 없음 (최대 변동 7.8%)</li></ul></div>
+<div class="section rx"><div class="section-title">핵심 성과 지표 · 최근 2주</div><div class="stats-row"><div class="stat c-blue"><div class="stat-n">1,251만원</div><div class="stat-label">지출 (유료 광고비)</div></div><div class="stat c-green"><div class="stat-n">1.15억원</div><div class="stat-label">매출 (오가닉 포함)</div><div class="stat-sub">MER 920%</div></div><div class="stat c-purple"><div class="stat-n">695%</div><div class="stat-label">유료 광고 순효율 (오가닉 비포함)</div></div><div class="stat c-red"><div class="stat-n">5,940</div><div class="stat-label">전환수(건)</div></div></div></div>
+<div class="section rx"><div class="section-title">최근 2주 모멘텀</div><div class="def-note"><b>ROAS</b> = 매출÷광고비 — 광고비 1원당 매출이 얼마인지 보여주는 채널 효율 지표(배수로 표현, 1보다 크면 광고비보다 매출이 큼)</div><p class='mom-lead'>매출 +3.8%, 지출 +7.2% (W7→W8) — 안정적, 급변 없음.</p><div class='callout'><b>채널 인사이트</b><ul style='margin:6px 0 0 18px'><li>네이버광고 지출을 최근 2주간 +16% 늘렸는데도 ROAS는 이전 수준을 그대로 유지 — 늘어난 예산이 효율 저하 없이 흡수되고 있다는 신호로, 추가로 투입해도 비슷한 효율을 낼 가능성이 높은 채널. 다음 예산 배정 시 우선 증액 후보로 검토 필요.</li></ul></div></div>
+<div class="section rx"><div class="section-title">핵심 이슈 (예산·매출 직결)</div><p class='note'>예산·매출 직결 이슈만. 데이터 정정(이상치·결측)은 마케팅팀 리포트에서 처리·수집팀 요청. 이 이슈·재배분은 이상 탐지에 기준선이 필요해 <b>최근 8주 누적</b>으로 판단합니다(성과 헤드라인만 최근 2주).</p><ul style='margin:2px 0 0 18px'><li><b>메타광고 광고비급등(과집행)</b> — 기회손실 882만원 (W5, 최근 8주 중 1주 반복 발생)<div class='issue-detail'><b>무슨 일인가</b> · 메타광고 광고비가 W5에 4,442,609원까지 올라 평소 수준(1,248,328원)보다 256% 급증. ROAS도 평소 3.22에서 1.24로 하락 — 늘어난 지출이 매출로 이어지지 못하는 상태. 평소보다 초과로 집행된 금액은 약 3,194,281원으로 추정.</div><div class='issue-detail'><b>어떻게 대응하나</b> · 이 채널에서 평소보다 더 쓴 광고비를 회수해, 시장 평균보다 효율이 좋은 다른 채널로 옮기는 예산 재배분을 진행할 예정입니다. 옮길 금액과 수혜 채널은 아래 '예산 재배분 결정' 섹션에서 확인할 수 있습니다.</div></li></ul></div>
+<div class="section rx"><div class="section-title">예산 재배분 결정 (승인 요청)</div><div class='callout'><div class='budget-h'>메타광고 → 네이버광고로 319만원 재배분 (1순위)</div><div class='budget-line'><b>무엇을 하나</b> · 메타광고에서 예산을 과집행해 회수 가능한 지출 319만원을, 시장 벤치마크 대비 효율이 검증된 네이버광고로 옮기는 안입니다.</div><div class='budget-line'><b>기대 효과</b> · 선형확장을 가정하면, 이번 재배분으로 기대되는 순증 매출 상한은 약 <b>1,277만원</b>입니다.</div><div class='budget-line'><b>실행 방식</b> · 전액을 바로 옮기지 않고 소액 테스트로 먼저 시작해, 2주 후 ROAS를 재측정한 뒤 개선이 확인되면 점차 확대합니다(상세 실행안·우선순위 로직은 마케팅팀 리포트 참조).</div><div class='budget-line'><b>승인 요청</b> · 위 재배분안의 집행 승인을 요청합니다.</div></div></div>
+<div class="section rx"><div class="section-title">관련 채널 효율 비교 (참고)</div><p class='note'>이번 재배분 결정에 관련된 두 채널만 비교합니다. 전체 채널 효율은 마케팅팀 리포트를 참조하세요.</p><div class='tbl-wrap'><table><thead><tr><th>채널</th><th>역할</th><th>광고비</th><th>매출</th><th>ROAS</th></tr></thead><tbody><tr><td>메타광고</td><td>재원 (과집행 회수처)</td><td class='lnum'>13,175,534원</td><td class='lnum'>34,088,126원</td><td class='lnum'>2.59</td></tr><tr><td>네이버광고</td><td>수혜 (재배분 투입처)</td><td class='lnum'>11,398,051원</td><td class='lnum'>75,065,735원</td><td class='lnum'>6.59</td></tr></tbody></table></div></div>
+<div class="foot">계산: Python · 마케팅팀 상세 리포트와 동일한 run_pipeline 결과</div>
+</div>
+</body>
+</html>

@@ -7,7 +7,7 @@ category별로 갈라 손실 이슈는 원(₩) 임팩트 누적으로 정렬한
 import numpy as np
 import pandas as pd
 
-from calculate import load_and_clean, find_revenue_outliers
+from calculate import load_and_clean, find_revenue_outliers, _week_key
 
 METRICS = ['spend', 'revenue', 'conversions']
 
@@ -59,11 +59,16 @@ def _lever(itype):
     return '전략'  # 채널평가·오가닉 기회 등 진단·전략성 이슈
 
 
-def _issue(channel, week, itype, category, metric, baseline, actual, impact, note, recoverable=np.nan):
+def _issue(channel, week, itype, category, metric, baseline, actual, impact, note, recoverable=np.nan,
+           phenomenon=None, evidence=None):
     """공통 이슈 스키마 dict 생성 — 모든 탐지기가 이 형태로 반환한다.
 
     recoverable: 예산 재배분으로 회수 가능한 실지출액(원). 과집행만 초과지출액을 넣고
     나머지는 NaN. impact_won(놓친 매출·추정치)과 구분 — 옮기는 돈은 recoverable, 우선순위 크기는 impact.
+    phenomenon/evidence: note를 마케팅팀 리포트용으로 두 문장으로 풀어 쓴 설명 — '무슨 일이 있었나(현상)'와
+    '왜 그렇게 보나·다음에 뭘 확인해야 하나(근거)'를 분리해 각각 별도 줄로 렌더한다(합쳐서 한 문단으로 두면
+    현상과 판단 근거가 섞여 읽기 어려움). 없으면 note를 현상으로, 근거는 빈 문자열로 채운다.
+    문장은 명사형으로 종결(예: '급증', '추정') — '~습니다'체는 쓰지 않는다.
     """
     dev = (actual - baseline) / baseline if baseline not in (0, None) and not pd.isna(baseline) else np.nan
     return {
@@ -72,6 +77,8 @@ def _issue(channel, week, itype, category, metric, baseline, actual, impact, not
         'metric': metric, 'baseline': baseline, 'actual': actual,
         'dev_pct': dev * 100 if not pd.isna(dev) else np.nan,
         'impact_won': impact, 'recoverable_won': recoverable, 'note': note,
+        'phenomenon': phenomenon if phenomenon is not None else note,
+        'evidence': evidence if evidence is not None else "",
     }
 
 
@@ -170,27 +177,47 @@ def detect_spike_drop(df, threshold=None):
                 note = (f"광고비 {a['spend']:,.0f} vs 기준선 {b['spend']:,.0f}"
                         f"({spend_dev*100:+.2f}%), ROAS {this_roas:.2f} vs 평소 {base_roas:.2f}↓ "
                         f"(초과지출 {extra_spend:,.0f}, 선형확장 가정 상한)")
+                phenomenon = (f"{ch} 광고비가 {week}에 {a['spend']:,.0f}원까지 올라 평소 수준"
+                             f"({b['spend']:,.0f}원)보다 {spend_dev*100:.0f}% 급증. ROAS도 평소 {base_roas:.2f}에서 "
+                             f"{this_roas:.2f}로 하락 — 늘어난 지출이 매출로 이어지지 못하는 상태.")
+                evidence = f"평소보다 초과로 집행된 금액은 약 {extra_spend:,.0f}원으로 추정."
                 issues.append(_issue(ch, week, '광고비급등(과집행)', 'loss', 'spend', b['spend'], a['spend'],
-                                     impact, note, recoverable=extra_spend))
+                                     impact, note, recoverable=extra_spend,
+                                     phenomenon=phenomenon, evidence=evidence))
 
             elif not pd.isna(spend_dev) and spend_dev <= -threshold:
                 note = (f"광고비 {a['spend']:,.0f} vs 기준선 {b['spend']:,.0f}({spend_dev*100:+.2f}%) — "
                         f"의도적 감축인지 집행 오류인지 확인 필요(매출 {a['revenue']:,.0f}, ROAS {this_roas:.2f})")
-                issues.append(_issue(ch, week, '광고비급락(집행축소)', 'operational', 'spend', b['spend'], a['spend'], 0, note))
+                phenomenon = (f"{ch} 광고비가 {week}에 {a['spend']:,.0f}원으로 평소 수준({b['spend']:,.0f}원)보다 "
+                             f"{abs(spend_dev)*100:.0f}% 감소. 매출은 {a['revenue']:,.0f}원(ROAS {this_roas:.2f})으로 "
+                             "집행 축소분 대비 큰 타격 없음.")
+                evidence = "의도한 감축인지 집행 중단 사고인지 담당자 확인 필요."
+                issues.append(_issue(ch, week, '광고비급락(집행축소)', 'operational', 'spend', b['spend'], a['spend'], 0,
+                                     note, phenomenon=phenomenon, evidence=evidence))
 
             elif (not pd.isna(rev_dev) and rev_dev <= -threshold) or (not pd.isna(conv_dev) and conv_dev <= -threshold):
                 impact = max(0, b['revenue'] - a['revenue'])
                 rev_str = f"{rev_dev*100:+.2f}%" if not pd.isna(rev_dev) else "n/a"
                 note = (f"매출 {a['revenue']:,.0f} vs 기준선 {b['revenue']:,.0f}({rev_str}), "
                         f"전환 {a['conversions']:.0f} vs {b['conversions']:.0f}, 광고비 {a['spend']:,.0f}(기준선 {b['spend']:,.0f})")
-                issues.append(_issue(ch, week, '성과급락', 'loss', 'revenue', b['revenue'], a['revenue'], impact, note))
+                phenomenon = (f"{ch}의 매출이 {week}에 {a['revenue']:,.0f}원으로 평소 수준"
+                             f"({b['revenue']:,.0f}원)보다 {rev_str} 감소.")
+                evidence = (f"광고비는 {a['spend']:,.0f}원으로 평소({b['spend']:,.0f}원)와 차이 없음 — "
+                           "지출은 그대로인데 성과만 하락한 것으로 추정.")
+                issues.append(_issue(ch, week, '성과급락', 'loss', 'revenue', b['revenue'], a['revenue'], impact, note,
+                                     phenomenon=phenomenon, evidence=evidence))
 
             elif (not pd.isna(rev_dev) and rev_dev >= threshold) or (not pd.isna(conv_dev) and conv_dev >= threshold):
                 impact = max(0, extra_rev)
                 rev_str = f"{rev_dev*100:+.2f}%" if not pd.isna(rev_dev) else "n/a"
                 note = (f"매출 {a['revenue']:,.0f} vs 기준선 {b['revenue']:,.0f}({rev_str}), "
                         f"광고비 {a['spend']:,.0f}(기준선 {b['spend']:,.0f}) — 호재")
-                issues.append(_issue(ch, week, '성과호재', 'positive', 'revenue', b['revenue'], a['revenue'], impact, note))
+                phenomenon = (f"{ch}의 매출이 {week}에 {a['revenue']:,.0f}원으로 평소 수준({b['revenue']:,.0f}원)보다 "
+                             f"{rev_str} 증가.")
+                evidence = (f"광고비는 {a['spend']:,.0f}원으로 평소({b['spend']:,.0f}원)와 비슷한 수준 — "
+                           "지출 증가 없이 성과가 개선된 긍정 신호로 판단.")
+                issues.append(_issue(ch, week, '성과호재', 'positive', 'revenue', b['revenue'], a['revenue'], impact,
+                                     note, phenomenon=phenomenon, evidence=evidence))
 
     return issues
 
@@ -206,7 +233,12 @@ def detect_outliers(raw_df):
         impact = abs(o['revenue'] - o['est'])
         note = (f"{o['date']} AOV {o['aov']:,.0f} vs 채널 중앙 {o['median_aov']:,.0f}(mz={o['mz']:.2f}), "
                 f"원본매출 {o['revenue']:,.0f} vs 정상추정 {o['est']:,.0f}")
-        issues.append(_issue(o['channel'], o['week'], '매출이상치', 'loss', 'aov', o['est'], o['revenue'], impact, note))
+        phenomenon = (f"{o['channel']} {o['date']}의 건당 평균 결제액(AOV)이 {o['aov']:,.0f}원으로 이 채널 평소 수준"
+                     f"({o['median_aov']:,.0f}원) 대비 비정상적 급등. 이날 매출 {o['revenue']:,.0f}원 기록, "
+                     f"평소 패턴 기준 추정치 {o['est']:,.0f}원 대비 부풀려졌을 가능성.")
+        evidence = "중복 주문 또는 테스트 결제 혼입 여부 원본 데이터 재확인 필요."
+        issues.append(_issue(o['channel'], o['week'], '매출이상치', 'loss', 'aov', o['est'], o['revenue'], impact,
+                             note, phenomenon=phenomenon, evidence=evidence))
     return issues
 
 
@@ -216,19 +248,28 @@ def detect_missing(raw_df):
     revenue 결측 → 손실(임팩트 = 채널 revenue 중앙값으로 추정한 결측 매출).
     impressions/clicks 결측 → 데이터품질(매출 직접 연결 약함, 수집 오류 의심. 임팩트 0).
     """
+    metric_label = {'impressions': '노출수', 'clicks': '클릭수'}
     issues = []
     for m in ['revenue', 'impressions', 'clicks']:
         for idx in raw_df[raw_df[m].isna()].index:
             row = raw_df.loc[idx]
             if m == 'revenue':
                 est = raw_df[raw_df['channel'] == row['channel']]['revenue'].median()
+                phenomenon = (f"{row['date']} {row['channel']}의 매출 데이터 결측(0원이 아니라 기록 누락).")
+                evidence = (f"채널 평소 매출 수준({est:,.0f}원)으로 임시 추정해 집계 반영 — "
+                           "트래킹 오류 여부 확인 후 실제 값 교체 필요.")
                 issues.append(_issue(row['channel'], row['week'], 'revenue결측', 'loss', 'revenue',
                                      est, np.nan, est,
-                                     f"{row['date']} {row['channel']} 매출 결측 → 채널 중앙값 {est:,.0f}으로 추정"))
+                                     f"{row['date']} {row['channel']} 매출 결측 → 채널 중앙값 {est:,.0f}으로 추정",
+                                     phenomenon=phenomenon, evidence=evidence))
             else:
+                phenomenon = f"{row['date']} {row['channel']}의 {metric_label[m]} 데이터 결측."
+                evidence = ("매출과 직접 연결되는 지표는 아니나 광고 집행 중단 또는 트래킹 코드 오류 가능성 — "
+                           "확인 필요.")
                 issues.append(_issue(row['channel'], row['week'], f'{m}결측', 'quality', m,
                                      np.nan, np.nan, 0,
-                                     f"{row['date']} {row['channel']} {m} 결측 — 집행 중단·트래킹 오류 의심"))
+                                     f"{row['date']} {row['channel']} {m} 결측 — 집행 중단·트래킹 오류 의심",
+                                     phenomenon=phenomenon, evidence=evidence))
     return issues
 
 
@@ -310,8 +351,15 @@ def detect_opportunity(by_channel, total_revenue, min_share=0.10):
         share = r['revenue'] / total_revenue if total_revenue > 0 else 0
         if r['spend'] == 0 and r['revenue'] > 0 and share >= min_share:
             note = f"광고비 직접지출 0(무료 아님 — 과거 유료광고 낙수효과·SEO 누적 결과), 매출 {r['revenue']:,.0f}(전체 {share*100:.2f}%), CVR {r['CVR']:.2f}%"
+            phenomenon = (f"{ch}은 광고비를 한 푼도 쓰지 않았는데도 매출 {r['revenue']:,.0f}원을 만들어내며, "
+                          f"전체 매출의 {share*100:.1f}%를 차지. 전환율(CVR)도 {r['CVR']:.2f}%로 측정되어 "
+                          "유입된 방문이 실제 구매로 잘 이어지고 있음.")
+            evidence = ("작지 않은 비중은 과거 유료광고의 낙수효과와 SEO·콘텐츠 누적이 이미 큰 자산으로 작동하고 "
+                        "있다는 뜻 — 이 채널은 광고비 배정이 아니라 SEO·콘텐츠 투자로 키우는 채널이라, 투자를 "
+                        "강화하면 광고비를 늘리지 않고도 매출을 더 키울 여력이 있음.")
             issues.append(_issue(ch, '전체', '오가닉 성장 잠재력', 'opportunity', 'revenue',
-                                 np.nan, r['revenue'], r['revenue'], note))
+                                 np.nan, r['revenue'], r['revenue'], note,
+                                 phenomenon=phenomenon, evidence=evidence))
     return issues
 
 
@@ -335,12 +383,19 @@ def score_and_rank(all_issues):
             # 같은 주에 여러 날 잡히는 이상치는 주차가 중복되므로 dedup + W2<W10 정렬(표시용).
             weeks=('week', lambda s: ','.join(sorted(set(s), key=lambda w: (len(str(w)), str(w))))),
             note=('note', 'first'),
+            phenomenon=('phenomenon', 'first'),
+            evidence=('evidence', 'first'),
         ).reset_index().sort_values('impact_won', ascending=False)
         out['loss'] = agg
     for cat in ['operational', 'positive', 'quality', 'opportunity']:
         sub = df[df['category'] == cat]
         if not sub.empty:
-            out[cat] = sub[['channel', 'week', 'type', 'impact_won', 'note']].reset_index(drop=True)
+            sub = sub[['channel', 'week', 'type', 'lever', 'impact_won', 'note', 'phenomenon', 'evidence']]
+            if cat != 'opportunity':   # 오가닉 기회는 주차 개념이 없는 '전체' 단위라 정렬 대상 아님
+                # impact_won이 없거나 0인 카테고리라 임팩트 정렬이 무의미 — 대신 가장 최근에 발생한
+                # 것이 지금 더 관련성 높다고 보고 주차 내림차순(최신 먼저)으로 긴급도를 대체한다.
+                sub = sub.iloc[sub['week'].map(_week_key).argsort()[::-1]]
+            out[cat] = sub.reset_index(drop=True)
     bench = df[df['category'] == 'benchmark']   # 채널평가는 표·인사이트용 구조화 필드를 통째로 보존
     if not bench.empty:
         out['benchmark'] = bench.reset_index(drop=True)

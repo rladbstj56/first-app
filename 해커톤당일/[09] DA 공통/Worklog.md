@@ -109,3 +109,15 @@
 **변경 파일**: SUBMISSION.md(신규)
 **검증**: verify_reproducibility 4종 전체 통과 유지. 산출물 목록 확인(output/insight_report·budget_reallocation의 .md·.html).
 **결과**: 제출 준비 완료. 정본 md + 파이프라인(src·skills·tests) + 기획안 + HTML 보조, SUBMISSION.md가 진입점.
+
+### W-008 · 목표 재정의 → 독자별 2종 리포트 + 주차별 ROAS 추이 + 롤링 8주 (decisions Step 27)
+**요청**: 프로젝트 목표 재작성(이커머스/서비스 마케팅 DA, 최근 8주 일별 CSV, 경영진·마케팅팀 주간 보고)을 REPORT_DESIGN에 기록하고 리포트를 재설계.
+**수행 작업**
+- 최근 8주 롤링 윈도우: calculate.trim_recent_weeks — 8주 초과 CSV는 최근 8주만 분석(중복 제거 후·이상치 탐지 전 적용). 현재 8주 데이터는 무동작(회귀 없음).
+- 주차별 채널 효율 추이(ROAS): compute_weekly_channel_roas + build_weekly_channel_trend — 주차×채널 매트릭스 + 자동 인사이트(리더 유지/역전·상승 추세). insight_report에만 배치.
+- 전주 대비 최근 2주 심층: compute_wow_by_channel + build_wow_channel_insight — 채널별 지출·ROAS 변화를 예산 방향으로 문장화. 이상치 판정은 중앙값 기준 유지(WoW로 판정 안 함).
+- 독자별 2종 리포트(계산 1벌, 렌더 2벌): exec_report(경영진 요약본 — 승인용 1장, 데이터 정정 제외) 신규. insight_report는 마케팅팀 상세본으로 재규정 + 예산 재배분 기획안 흡수.
+- standalone budget_reallocation.md/.html 생성·함수 제거(build_reallocation·build_reallocation_html 등). reallocate.py는 엔진 모듈로 유지. 조사 오류 방지 _josa 헬퍼 추가. SUBMISSION·portfolio 2종 구조로 갱신.
+**변경 파일**: docs/REPORT_DESIGN.md, src/calculate.py·reallocate.py·generate_report.py·generate_html.py, tests/make_fixtures.py(12주 변형 D)·verify_reproducibility.py, output/(insight_report·exec_report .md·.html, budget_reallocation 삭제), decisions.md(Step 27), SUBMISSION.md, portfolio.md
+**검증**: verify_reproducibility 5케이스 전체 통과. D(12주)→분석 창 8주(W5-W12) 트림 증명. 산출물 2종(insight_report·exec_report)만 생성 확인.
+**결과**: 독자별 2종 리포트 체계 완성 — 경영진 요약본 1장 + 마케팅팀 상세본(예산 흡수), 최근 8주 고정 동향.

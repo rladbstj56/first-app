@@ -284,3 +284,220 @@
 - 미반영: 갭5(재배분안 인라인)는 Executive Summary 박스(Step 24)가 headline 재배분을 이미 인라인 표기해 목표 충족 → 추가 시 중복만 늘어 현 상태 유지.
 - 변경 파일: calculate.py(CPA 파생), generate_report.py(md 표 컬럼·각주), generate_html.py(html 표 컬럼·각주).
 - 검증: 원본 CPA(이메일 1,970 / 네이버 2,776 / 카카오 5,020 / 메타 6,468 / 오가닉 -) 정상. verify_reproducibility 4케이스 전체 통과.
+
+**[Step 27] 목표 재정의(REPORT_DESIGN 갱신) → 독자별 2종 리포트 + 주차별 ROAS 추이 + 롤링 8주 윈도우**
+- 배경: 사용자가 프로젝트 목표를 재작성(이커머스/서비스 마케팅 DA, 최근 8주 일별 CSV, 경영진·마케팅팀 주간 보고). REPORT_DESIGN.md 북극성 아래에 '프로젝트 배경·목표(작성자 정의)' 블록으로 기록하고, 그 목표가 확정한 설계 결정 4건을 코드에 반영.
+- 결정1 — 변화 비교 두 축 역할 분리(사용자 고민 지점): 이상치·이슈 탐지는 다른 주차 **중앙값 기준(강건, LOO)**, 급변 모니터링은 **전주 대비(WoW)**. WoW만으로 이상치 판정하지 않음(전주가 우연히 튀면 왜곡). 근거: 중앙값은 노이즈에 강건해 판정용, WoW는 모멘텀·의사결정 속도용. 이상치 로직은 불변 유지, WoW에 '채널별 최근 2주 변화' 심층만 추가(build_wow_channel_insight — 지출 급증+ROAS 유지/미흡, ROAS 하락 채널을 예산 방향으로 문장화).
+- 결정2 — 주차별 채널 효율 추이 신설(ROAS 기준): 합산 ROI 순위(3섹션)가 못 보는 '주차 간 효율 역전·최근 상승 추세'를 주차×채널 ROAS 매트릭스로 드러내 예산 이동 **타이밍** 근거 확보. 지표를 ROAS로 고정한 이유: 벤치마크 종합등급·예산 액션이 모두 ROAS라 한 지표로 관통(ROI는 절대 배수라 채널 간 스케일차로 추이 비교 왜곡). 추세 판정 임계값: 창 전반/후반 평균 ±15%(한 주 노이즈 방지). insight_report에만 배치(마케팅팀 상세).
+- 결정3 — 최근 8주 롤링 윈도우 고정: CSV가 8주 초과면 최근 8주만 트림(load_and_clean에서 중복 제거 후·이상치 탐지 전 적용 → 기준선이 분석 창 안에서 계산). 현재 8주 데이터는 무동작(회귀 없음). 목적: 오래된 주차가 추이·중앙값 기준선을 흐리지 않게. 데이터 개요에 트림 발생 시에만 고지 라인 노출.
+- 결정4 — 독자별 2종 리포트(계산 1벌, 렌더 2벌): 경영진은 예산을 **승인**하고 마케팅팀은 **집행**하므로 같은 예산 판단을 두 고도로 렌더. exec_report(경영진 요약본: 한눈에보기·최근2주 모멘텀·핵심이슈 예산매출직결만·예산 결정 승인요청, 데이터 정정 제외) 신규. insight_report는 마케팅팀 상세본으로 재규정하고 **예산 재배분 기획안을 흡수**(reallocate.py 빌딩블록 재사용). 정본은 run_pipeline 하나라 수치 불일치 없음. (사용자 선택: 2종 — 예산안 별도파일 대신 마케팅 리포트 흡수. 표준 budget_reallocation.md/html은 엔진 검증·레거시로 유지.)
+- 부수: 동적 채널명 뒤 조사 오류('이메일가') 방지용 _josa 헬퍼 추가(받침 유무로 이/가·을/를 선택).
+- 변경 파일: docs/REPORT_DESIGN.md(목표·설계결정), calculate.py(trim_recent_weeks·compute_weekly_channel_roas·compute_wow_by_channel·recent_weeks 파라미터), reallocate.py(run_pipeline에 weekly_roas·wow_channel 노출·_meta n_weeks_file), generate_report.py(build_weekly_channel_trend·build_wow_channel_insight·build_exec_report·_reallocation_section_md·_josa, insight 헤더 마케팅팀 재규정), generate_html.py(_weekly_trend_html·_wow_channel_html·build_exec_html·_reallocation_section_html·led CSS), tests(make_fixtures 12주 변형 D·verify_reproducibility 5케이스+경영진·트림·신규섹션 검증).
+- 검증: verify_reproducibility 5케이스 전체 통과. D(12주)→분석 창 8주(W5-W12)·WoW W11→W12로 트림 증명. 원본 추이 인사이트 '이메일 8주 연속 1위', 최근2주 '네이버 +16% 증액·ROAS 유지→추가 여력 점검' 정상. 경영진 요약본 1페이지(~1,050자) 생성.
+
+**[Step 28] 경영진 요약본 성과 헤드라인을 최근 8주 → 최근 2주(전주 대비)로 전환 + 2주 기준 명시**
+- 배경: 사용자가 exec_report를 새로 확인하며 "경영진에겐 핵심·결정 사안만 보이면 되니 성과도 전주 대비(최근 2주)면 충분, 그리고 2주 기준을 더 크게 명시"를 요청. 기존엔 전체 분석이 8주 기준이라 '이번 기간 성과'(총매출 4.4억)도 8주 누적이었음.
+- 결정(사용자 승인): ①성과 헤드라인만 최근 2주(W7+W8) 합계로 재집계 ②핵심 이슈·예산 재배분은 8주 기준선 유지. 근거: 이상 탐지(과집행 W5)·재배분 재원은 기준선이 필요해 2주로 좁히면 '실제 결정 사안'(재배분안) 자체가 사라짐 → 경영진 리포트의 핵심 결정 콘텐츠를 보존하려 성과(신선도)와 이슈(탐지 신뢰도)의 창을 분리.
+- 명시 방식(사용자 선택): 헤더 문구를 '분석 창 8주' → '분석 기준: 최근 2주(W7→W8) 전주 대비'로 교체 + 제목 아래 최상단 배지(md: `> ## 📌 최근 2주 전주 대비 기준`, html: 붉은 badge)로 강조. 핵심 이슈 섹션엔 "이 이슈·재배분은 기준선이 필요해 최근 8주 누적으로 판단(성과 헤드라인만 최근 2주)" 각주 추가 — W5가 2주 창 밖에 보이는 이유를 경영진이 오해하지 않게.
+- 구현: run_pipeline이 정제된 df를 dict에 공유('데이터 하나') → exec 전용 exec_perf_2w(d)가 wow 주차(전주·금주)로 df를 필터해 compute_summary로 2주 total만 재집계. build_summary_points에 perf override 파라미터 추가(경영진 요약본만 전달, 마케팅팀 상세본은 8주 유지). md·html 동일 규칙 공유(_perf_body·exec_perf_2w 재사용)라 수치 불일치 없음.
+- 검증: 원본 성과 8주 4.4억 → 2주 1.15억(총매출 115,122,665원, MER 920%)로 정상 전환. verify_reproducibility 4변형(4·8·12주) 전체 통과 — 주차 수가 달라도 wow 마지막 2주 기준이라 견고. 이슈·예산(메타 과집행 W5 → 네이버 3.19M 재배분)은 불변.
+- 변경 파일: reallocate.py(run_pipeline에 df 노출), generate_report.py(exec_perf_2w·_perf_body·build_summary_points perf 파라미터·build_exec_report 헤더/배지/성과 교체·_exec_issues_md 근거 각주), generate_html.py(build_exec_html 2주 stats·배지·요약 override·이슈 각주, _exec_summary_html perf 파라미터).
+
+**[Step 29] 경영진 요약본(exec_report.html) 가독성 개편 — 제목 간소화·축약 숫자·창 배지·지표 정의**
+- 배경: 사용자가 exec_report.html을 검토하며 "한눈에 보기가 한눈에 안 들어온다" 피드백. 부연 문구 삭제, 제목 간소화, 숫자가 길어 안 보이는 문제, MER/순효율 정의 부재를 지적. 마케팅팀 상세본(insight_report.html)은 언급 대상이 아니므로 손대지 않음.
+- 결정1(제목·부연문구): "한눈에 보기 (Executive Summary)" → "핵심 요약"으로 간소화, "이 박스만으로 ~ 요약." 문구 삭제. `_exec_summary_html`에 title/show_note 파라미터 추가해 경영진판만 변경, 마케팅팀 상세본은 기존 문구 유지(공유 함수라 파라미터 기본값으로 하위호환).
+- 결정2(숫자 축약): 콤마 9자리 원화(예: 115,122,665원)는 경영진이 한눈에 크기를 못 잡음 → 억/만 단위 축약(`_won_compact`: 1억↑ "X.XX억원", 1만↑ "X,XXX만원"). 경영진 요약본(stat 카드·핵심 이슈·예산 결정 callout·요약 박스)에만 적용, 마케팅팀 상세본은 정확 원 단위(`_won`) 그대로 유지 — 마케터는 정밀 집행 금액이 필요하고 경영진은 크기 감만 필요하다는 독자별 요구 차이 반영. 요약 박스처럼 이미 조립된 문장은 regex(`_compact_won_text`)로 사후 치환.
+- 결정3(성과 vs 이슈·예산 창 불일치 명시): "이번 기간 성과 포함한 아래 파트들도 최근 2주로 바뀌어야겠지?"라는 질문에는 아니오로 답함 — Step 28에서 이미 성과(2주)와 이슈·예산(8주 기준선, 탐지 신뢰도 때문에 불변)을 의도적으로 분리했었고 이 결정은 유지. 대신 사용자가 그 이유를 페이지에서 바로 알 수 있도록 요약 박스 각 항목에 창 배지(`<span class="win-tag">`)를 붙임 — 성과·추세는 "최근 2주"(초록), 예산액션·최우선이슈는 "8주 누적"(주황). `dual_window=True`로만 켜지므로 마케팅팀 상세본(전체가 8주 하나뿐)에는 영향 없음.
+- 결정4(지표 정의): 경영진이 MER과 유료 순효율의 차이를 모를 수 있어 핵심 성과 지표 섹션 하단에 한 줄 정의 추가("MER = 총매출÷광고비, 오가닉 포함 전체 효율 · 유료 순효율 = 유료매출÷광고비, 광고 자체 효율"). md는 이미 각주 설명이 있어(Step 24) html에만 보강.
+- 부수(가독성): 요약 박스 li 폰트 13px→16px·padding 확대, h2 16px→19px, stat-n 26px→28px로 카드 숫자도 살짝 키움.
+- 변경 파일: generate_html.py(_won_compact·_compact_won_text·_window_tag 신규, _exec_summary_html에 title/show_note/compact/dual_window 파라미터, build_exec_html의 stat/이슈/예산 숫자를 _won_compact로 교체·stat_def 추가, CSS .win-tag/.stat-def·요약 폰트 확대).
+- 검증: verify_reproducibility 4변형 전체 통과. insight_report.html(마케팅팀 상세본)의 요약 박스는 "한눈에 보기" 제목·정확 원 단위 그대로 확인 — 회귀 없음. exec_report.html만 "핵심 요약"·축약 숫자·창 배지·지표 정의로 갱신 확인.
+
+**[Step 30] 핵심 요약 항목 재작성 — 순서(이슈→예산) · 단어 선택 · 서술형 설명 · 지표 정의 위치**
+- 배경: 사용자가 exec_report(md·html 공유 핵심요약)를 다시 검토하며 4가지 지적: ①MER·유료순효율 정의는 그 지표가 처음 나오는 핵심요약에 있는게 낫지 않나 ②'바로 실행할 예산 액션'이 무슨 뜻인지 안 와닿음, 제목 단어도 경영진 보고서에 맞게 재고 ③'최우선 실행 이슈'도 단어 재고 + '과집행→기회손실→예산재배분 대응'을 풀어서 서술 + 이슈가 예산액션보다 먼저 나오는게 자연스러움 ④'최근 추세'가 무슨 추세인지 설명 필요.
+- 결정(모두 build_summary_points에 반영 — md·html 공유 함수라 양쪽 다 개선됨, insight_report의 자체 요약 박스도 함께 좋아짐):
+  1. 순서 변경: 성과 → **가장 시급한 예산 리스크**(문제) → **예산 재배분 승인 요청**(해법) → 데이터 정정 → 추세. 문제-해법 순서로 인과가 읽히게.
+  2. 라벨 재선정: '바로 실행할 예산 액션'→'예산 재배분 승인 요청'(경영진이 실제로 할 일=승인, 아래 '예산 재배분 결정' 섹션과 용어 통일). '최우선 실행 이슈'→'가장 시급한 예산 리스크'(구체적 리스크임을 명시). 재원 없을 때 '예산 액션'→'예산 조정 필요 없음'.
+  3. 서술형 문장: 이슈는 "{채널}이(가) 예산을 과집행해 {손실액}의 기회손실이 발생했습니다({주차}). 초과 지출분은 회수해 예산 재배분으로 대응할 예정입니다."로 원인·결과·대응을 한 문장에 명시(_josa로 조사 처리). 예산 액션도 "{재원}의 과집행 회수분 {금액}을(를) {수혜처}로 재배분하면, 최대 {기대효과}이 기대됩니다"로 조건-효과 구조 서술.
+  4. 추세 항목에 정의 선행: "매출·지출이 전주 대비 안정적인지 보는 지표로, 변동폭이 50%를 넘으면 급변으로 봅니다 — " 를 판정 결과 앞에 추가.
+  5. MER·유료 순효율·오가닉 정의 위치: 리포트에서 그 지표가 처음 등장하는 '핵심 요약(성과)' 항목에 이동. 신규 `_perf_body_exec(t)`(생성·exec 전용, `_perf_body` 확장)가 정의 문장을 붙임. 기존 stat 카드 아래 별도 정의 박스(stat_def)는 중복이라 제거 — 단일 위치 원칙.
+- 영향 범위: build_summary_points는 md exec·md insight·html exec·html insight 4곳 모두가 공유하므로 순서·서술 개선이 4곳에 전부 적용됨(의도한 효과). exec 전용(`_perf_body_exec`, `perf` 인자)은 md/html의 exec 리포트에만 적용되고 insight(마케팅팀)의 자체 성과 항목은 기존 `_perf_body`(정의 없음, 이미 핵심 수치 요약 섹션에 각주 있음, Step 24)를 그대로 씀.
+- 변경 파일: generate_report.py(`build_summary_points` 순서·라벨·서술 전면 개편, `_perf_body_exec` 신규), generate_html.py(`_window_tag` 라벨 매핑 갱신, `build_exec_html`에서 `_perf_body_exec` 사용·중복 stat_def 제거, import 교체).
+- 검증: verify_reproducibility 4변형(4·8·12주) 전체 통과. md·html 모두 새 순서(리스크→예산승인)·서술형 문장·정의 위치 확인.
+
+**[Step 31] 지표 정의 분리(작은 회색 부연) + 리포트 문장 전면 명사형(개조식) 종결**
+- 배경: 사용자가 Step 30에서 추가한 MER/유료순효율/오가닉 정의 문장이 본문에 그대로 섞여 있어 "작은 글씨·회색으로 구분해야 한다"고 지적. 또한 "대시보드나 리포트의 문장들은 모두 ~습니다체가 아니라 명사형으로 끝나야 한다"(예: 기회손실 발생, 대응 예정)는 스타일 원칙을 제시.
+- 결정1(정의 분리): `build_summary_points`의 반환 타입을 (라벨, 본문) → **(라벨, 본문, 부연설명)** 3-tuple로 확장. 부연설명이 있는 항목은 성과(perf) 항목뿐(신규 `PERF_DEF_NOTE` 상수, 기존 `_perf_body_exec`는 폐기). md는 본문 다음 줄에 인용구+이탤릭(`  > *...*`)으로, html은 `<div class='li-note'>`(11.5px 회색)로 렌더 — 본문과 시각적으로 분리해 '주 정보/부가 설명' 위계를 만듦. `_executive_summary`(insight md)·`build_exec_report`(exec md)·`_exec_summary_html`(html) 3개 호출부 모두 3-tuple 언패킹으로 갱신.
+- 결정2(명사형 종결, 개조식): "~습니다/~세요/~봅니다"체를 "~발생/~예정/~필요/~없음" 등 명사·완료형으로 교체. 범위는 **데이터 기반 인사이트 문장**(핵심요약 4항목, 모멘텀 채널 인사이트 3종, 이슈/예산 폴백 문구)으로 한정 — 안내·가이드 성격의 정적 문구(_usage_guide, PRIORITY_CRITERIA 헤더 등 "~합니다"가 독자에게 말을 거는 안내문)는 이번 범위에서 제외(전체 리포트 문장을 다 훑는 건 과한 스콥이라 판단, 필요 시 후속 요청으로 확장). 구체 변경: '기회손실이 발생했습니다'→'기회손실 발생', '대응할 예정입니다'→'대응 예정', '재배분(1순위)하면'→'재배분(1순위).', '~봅니다'→'~판정', '~늘렸고 ROAS는 유지됐습니다'→'~증가, ROAS 유지', '~없습니다'→'~없음.' 등. `build_wow_channel_insight`(md·html 공유)도 동일 원칙 적용 — insight_report의 모멘텀 섹션도 함께 개선됨.
+- 영향 범위: `build_summary_points`(md exec·md insight·html exec·html insight 4곳 공유), `build_wow_channel_insight`(exec·insight 모멘텀 공유), `_exec_issues_md`/`_exec_budget_md`(md exec 폴백), `build_exec_html`의 동일 폴백(html exec). insight_report의 자체 요약 항목은 perf=None이라 부연설명(note)이 항상 None — 시각 변화 없음(정의는 exec 전용 유지, Step 29 원칙 그대로).
+- 변경 파일: generate_report.py(`build_summary_points` 3-tuple 반환·명사형 전환, `PERF_DEF_NOTE` 신규, `_perf_body_exec` 제거, `_executive_summary`/`build_exec_report` 3-tuple 언패킹, `build_wow_channel_insight`/폴백 문구 명사형), generate_html.py(`_exec_summary_html` 3-tuple 처리·`.li-note` 렌더, `build_exec_html` perf 조립·폴백 문구 명사형, CSS `.li-note` 추가).
+- 검증: verify_reproducibility 4변형 전체 통과(A케이스는 재원 없음 폴백 분기도 정상 확인). md는 정의가 인용구로, html은 회색 소형 텍스트로 분리 렌더 확인. 핵심요약·모멘텀 문장 전체 명사형 종결 확인.
+
+**[Step 32] insight_report(마케팅팀 상세본)에서 '왜 이 리포트인가(문제 정의)' 섹션 제거**
+- 배경: 사용자가 마케팅팀 대상 리포트에 이 섹션이 정말 필요한지 질문 — "제거하고 당장의 필요성을 그대로 보여주면 되잖아"라는 문제 제기.
+- 판단: 이 섹션(naive 리포트가 유도하는 3가지 오판과 그걸 막는 방법 서술)은 마케팅팀의 다음 행동을 앞당기지 않는 메타 설명(리포트 설계를 정당화하는 글)이었다. 게다가 그 내용이 주장하는 3가지 방어("액션 제공"·"ROI 절대순위 오판 방지"·"손실/데이터왜곡 분리")는 이미 '이번 주 실행 플레이북'·'채널 평가(벤치마크)'·'이슈' 섹션이 실물 구조로 증명하고 있어 완전히 중복이었다. docs/REPORT_DESIGN.md의 북극성 기준("독자의 다음 행동을 앞당기는가? 못하면 뺀다")에도 스스로 어긋남.
+- 결정(사용자 승인): insight_report(md·html)에서 섹션 삭제. 단 "왜 이렇게 설계했나"라는 설명 자체는 채점 기준(Standard 가산: 리포트 설계 근거 설명)에 필요하므로, 마케팅팀 리포트가 아니라 docs/REPORT_DESIGN.md(설계 근거 문서, 평가자용)로 옮겨 기록 — 독자가 다른 문서를 섞지 않는다.
+- 구현: generate_report.py에서 `build_problem_frame`·`_problem_frame_md` 함수 및 build_insight_report 내 호출 라인 삭제. generate_html.py에서 `_problem_frame_html` 함수·호출·import·전용 CSS(`.guide.problem`) 삭제. exec_report는 원래 이 섹션을 쓰지 않아 영향 없음.
+- 변경 파일: generate_report.py, generate_html.py, docs/REPORT_DESIGN.md(3장에 제거 근거 기록), output/insight_report.md·output/insight_report.html(재생성).
+
+**[Step 32] 지표 정의를 핵심 요약 제목 바로 아래로 이동(용어 볼드) + 예산 승인 요청 '상세' 괄호 표기**
+- 배경: Step 31에서 정의를 성과 항목에 딸린 부연(li-note)으로 넣었는데, 사용자가 재검토 후 ①정의 문장에서 정의되는 용어(MER·유료 순효율·오가닉) 자체는 굵게, 줄바꿈해 핵심요약 **제목 바로 아래**(항목보다 먼저)에 배치 ②'예산 재배분 승인 요청' 항목의 "상세: 예산 재배분 기획안 섹션" 부분을 괄호로 표시 요청.
+- 결정1(정의 위치·볼드): 정의를 특정 항목에 종속시키지 않고 페이지 레벨 요소로 승격. `PERF_DEFS`(용어, 설명) 리스트를 generate_report.py에 데이터로 정의하고, md 렌더러 `perf_def_note_md()`(용어를 `**bold**`)와 html 렌더러 `_perf_def_note_html()`(용어를 `<b>`)가 각자 포맷에 맞게 렌더링. `_exec_summary_html`에 `top_note` 파라미터를 추가해 `<h2>` 바로 다음, `<ul>` 목록보다 앞에 `.def-note`(12px 회색, 볼드 용어는 진한 회색)로 배치. md도 "## 한눈에 보기" 제목 직후, 요약 리스트 이전에 별도 줄로 삽입. `build_summary_points`의 perf 3번째 요소(note)는 이제 사용하지 않음(perf를 다시 2-tuple로 원복) — 정의가 항목별이 아니라 박스 전체에 한 번만 필요하기 때문.
+- 결정2(상세 괄호): "...재배분(1순위).{기대효과 문장} 상세: 예산 재배분 기획안 섹션." → "...재배분(1순위).{기대효과 문장} **(상세: 예산 재배분 기획안 섹션)**"로 변경 — 참조 안내라는 성격이 본문 문장과 구분되게.
+- 영향 범위: insight_report(마케팅팀 상세본) html도 이전에 exec와 동일하게 성과 항목에 정의가 붙어 있었는데(사용자가 직접 반영해둔 상태), 이번 리팩터로 그 리포트도 동일하게 제목 아래 정의 배치로 전환됨 — md insight_report는 원래 정의가 없으므로(Step 24 각주로 대체) 변화 없음.
+- 변경 파일: generate_report.py(`PERF_DEFS`·`perf_def_note_md` 신규, `PERF_DEF_NOTE`·`_perf_body_exec` 관련 잔재 정리, perf 2-tuple 복귀, '(상세: ...)' 괄호화), generate_html.py(`PERF_DEFS` import, `_perf_def_note_html` 신규, `_exec_summary_html`에 `top_note` 파라미터, exec·insight 두 호출부 모두 `top_note=_perf_def_note_html()`로 갱신, CSS `.def-note` 추가).
+- 검증: verify_reproducibility 4변형 전체 통과. md·html 모두 정의가 제목 바로 아래·용어 볼드로 렌더 확인, '(상세: 예산 재배분 기획안 섹션)' 괄호 표기 확인.
+
+**[Step 33] insight_report에서 '이 리포트 사용법' 안내 박스 제거 — 태그 범례만 이슈 섹션으로 이동**
+- 배경: 앞선 Step(32, 위 항목)에서 '왜 이 리포트인가' 섹션을 제거한 뒤, 사용자가 이어서 '이 리포트 이렇게 쓰세요' 박스도 지워도 되지 않겠냐고 질문.
+- 판단: 박스 4줄 중 3줄(무엇/누가·언제/읽는 순서)은 헤더 정보 반복이거나 이미 섹션이 위→아래 순서로 배치돼 있는 걸 말로 재설명하는 것이라 매주 받는 반복 구독자에게는 불필요(북극성 기준 "다음 행동을 앞당기는가"에 안 맞음). 나머지 1줄("액션으로 잇기": [예산]→재배분 기획안, [데이터·트래킹]→트래킹팀, [운영]→채널담당자 확인)만 실제 조치처를 알려주는 실행 정보였는데, 확인해보니 이 내용은 이미 '핵심 이슈' 섹션 상단에 거의 동일한 문장("각 이슈의 대괄호 태그가 곧 담당·조치처입니다...")으로 md에는 이미 중복 존재했음(html에는 없었음).
+- 결정(사용자 승인 — "태그 범례만 남기고 이슈 섹션으로 이동"): md는 `_usage_guide` 함수·호출 전체 삭제(태그 범례는 이미 `_issues()`에 있어 그대로 유지, 이동이 아니라 중복 제거). html은 `_usage_guide_html` 함수·호출·전용 CSS(`.guide`, `.guide.rx`) 삭제하고, 원래 없던 태그 범례 한 줄을 `_issue_cards()` 상단(손실/데이터정정 분리 안내 바로 다음)에 신규 추가해 md와 동일하게 맞춤.
+- 변경 파일: generate_report.py(`_usage_guide` 삭제, build_insight_report 호출 라인 삭제), generate_html.py(`_usage_guide_html` 삭제, `_issue_cards`에 태그 범례 `<p class='note'>` 추가, build_insight_html 호출 라인 삭제, CSS `.guide`/`.guide.rx` 삭제).
+- 검증: verify_reproducibility 4변형 전체 통과. md·html 모두 "이 리포트 사용법" 박스 사라지고, 태그 범례가 '핵심 이슈' 섹션 상단에서 확인됨.
+
+**[Step 34] insight_report(마케팅팀)의 '한눈에 보기'를 exec_report(경영진)의 '핵심 요약'과 동일 구조로 통일 + 요약 박스 전용 금액 축약**
+- 배경: 사용자가 "마케팅팀 보고서의 한눈에 보기도 경영진 보고서의 핵심 요약과 같은 구조로 맞춰달라"고 요청 — ①'이 박스만으로 ~ 요약' 부연 문구 삭제 ②제목은 리포트 양식에 맞는 단어 선택으로만 구성 ③금액은 요약 박스에서는 억/만원 단위로 간단히, 핵심이슈·하위 섹션 등 상세부는 정확한 원 단위 유지.
+- 결정1(구조 통일): `_exec_summary_html`(html, insight·exec 공용 렌더러)의 기본값을 exec 쪽 표현으로 맞춤 — `title="한눈에 보기 (Executive Summary)"`→`"한눈에 보기"`, `show_note=True`→`False`, `compact=False`→`True`. exec 호출부는 이미 `title="핵심 요약"` 등 자체 값을 넘기므로 영향 없음. md `_executive_summary`도 동일하게 제목에서 "(Executive Summary)" 영문 병기 제거, "이 박스만으로..." 부연 문구 제거, `perf_def_note_md()`(지표 정의)를 제목 바로 아래에 추가해 exec md 구조(`"## 한눈에 보기\n\n" + perf_def_note_md() + summary`)와 완전히 동일하게 맞춤.
+- 결정2(요약 박스 전용 금액 축약): 기존에는 exec html에서만 `_won_compact`/`_compact_won_text`(억/만원 축약)를 썼고 md는 어디도 축약하지 않았음. 이번에 md·html 양쪽 요약 박스 모두 축약이 필요해져 로직을 generate_report.py로 옮겨 `won_compact`/`compact_won_text`로 공개(원래 generate_html.py 전용 헬퍼였던 걸 md·html 공유 함수로 승격 — 두 곳에 같은 로직을 중복 두면 축약 규칙이 어긋날 위험이 있어 한 곳으로 모음). `_executive_summary`(insight md)·`_exec_summary_html`(insight·exec html)만 이 축약을 적용하고, `build_exec_report`(exec md)와 나머지 모든 상세 섹션(핵심 수치 요약·이슈·예산 재배분·플레이북 등)은 여전히 `won()`으로 정확한 원 단위를 그대로 씀 — "요약은 크기만 빠르게 파악, 상세는 근거로 정확한 숫자"라는 역할 분리.
+- 참고: exec_report의 요약 박스 항목 라벨(이번 기간 성과·가장 시급한 예산 리스크·예산 재배분 승인 요청·최근 추세 등)은 `build_summary_points`를 md·html·insight·exec가 모두 공유하므로 이미 두 리포트에서 동일 — 이번 변경으로 라벨 자체를 새로 바꾸지 않음.
+- 변경 파일: generate_report.py(`won_compact`·`compact_won_text` 신규, `_executive_summary` 제목·부연 문구·지표정의·축약 적용), generate_html.py(로컬 `_won_compact`/`_compact_won_text` 삭제하고 generate_report에서 import, `_exec_summary_html` 기본값 변경, 미사용 `import re` 제거).
+- 검증: 재생성한 insight_report.md·html에서 "한눈에 보기" 항목이 4.40억원/5,099만원처럼 축약 표기, 아래 핵심 이슈·예산 재배분 섹션은 여전히 8,822,424원처럼 정확한 원 단위임을 확인. exec_report.md·html은 이전과 동일하게 출력됨(회귀 없음).
+
+**[Step 33] 경영진 요약본 본문 글씨 확대(모멘텀·채널 인사이트) + 인사이트 문장 상세화**
+- 배경: 사용자가 exec_report.html을 다시 보며 "핵심 요약 밖의 본문 내용부터 글씨가 작아 중요해 보이지 않는다", 특히 "최근 2주 모멘텀 내용과 그 안의 채널 인사이트조차 글씨가 너무 작다"고 지적. 또한 채널 인사이트 문장이 Step 31에서 명사형으로 압축되면서 "왜 그런지·뭘 해야 하는지"가 잘 안 읽힌다고 지적.
+- 결정1(글씨 크기): `.callout`(채널 인사이트·예산 재배분 결정 박스가 공유하는 클래스) 13px→16px, line-height 1.7로 확대. 모멘텀 리드 문장("매출 +3.8%, 지출 +7.2%...")은 기존 범용 캡션 클래스 `.note`(다른 곳의 각주·방법론 설명과 공유, 그대로 작게 둬야 위계가 유지됨)를 그대로 쓰면 다른 캡션들도 다 커져버리므로, 전용 클래스 `.mom-lead`(15px, 세미볼드)를 신설해 분리 — '핵심 데이터 문장'과 '부연 각주'의 글씨 위계를 다르게 유지.
+- 결정2(인사이트 상세화): `build_wow_channel_insight`(md·html, exec·insight 공유) 세 문장 유형을 명사형 종결은 유지하되(Step 31 원칙 존속) 내용을 확장 — 판정 결과만 던지지 않고 '왜 그렇게 보는지(예: 늘린 예산이 효율 저하 없이 흡수됨)'와 '그래서 뭘 해야 하는지(예: 우선 증액 후보로 검토)'까지 한 문장에 풀어 씀. 예: "네이버광고 지출 최근 +16% 증가, ROAS 유지 — 효율 유지 확인, 추가 증액 여력 점검 필요." → "네이버광고 지출을 최근 2주간 +16% 늘렸는데도 ROAS는 이전 수준을 그대로 유지 — 늘어난 예산이 효율 저하 없이 흡수되고 있다는 신호로, 추가로 투입해도 비슷한 효율을 낼 가능성이 높은 채널. 다음 예산 배정 시 우선 증액 후보로 검토 필요."
+- 영향 범위: `.callout`은 exec의 모멘텀·예산결정 박스와 insight_report의 '추이 인사이트'·'최근 2주 예산 인사이트' 박스가 공유 — 모두 함께 커짐(의도한 효과). `build_wow_channel_insight`도 양쪽 리포트가 공유해 문장 상세화가 동시에 적용됨.
+- 변경 파일: generate_html.py(`.callout` 폰트·line-height 확대, `.mom-lead` 신규 CSS, 모멘텀 리드 문단 클래스를 `.note`→`.mom-lead`로 교체), generate_report.py(`build_wow_channel_insight` 세 문장 전면 상세화).
+- 검증: verify_reproducibility 4변형 전체 통과. exec_report.html에서 채널 인사이트 폰트 16px·모멘텀 리드 15px로 확대 확인, 문장이 원인·시사점까지 포함해 길어진 것 확인.
+
+**[Step 35] insight_report.html '이번 주 실행 플레이북'→'이번 주 업무 우선순위' 개명 + 핵심 이슈 섹션 연결 명시 + 마케팅팀 상세본 본문 글씨 확대**
+- 배경: 사용자가 insight_report.html을 보며 ①'이번 주 실행 플레이북' 제목이 리포트 톤에 안 맞음(업무 우선순위 등으로) ②이 섹션이 '핵심 이슈' 섹션과 연결된다는 걸 명시해달라 ③마케팅팀 리포트 전체적으로 글씨가 작으니 제목은 유지하고 본문(주요 내용)만 키워달라고 요청.
+- 결정1(제목 변경): '이번 주 실행 플레이북' → '이번 주 업무 우선순위'로 변경. md·html 양쪽의 섹션 제목과 `build_playbook`/`_playbook_md`/`_playbook_html` 독스트링·SUBMISSION.md 언급까지 일괄 교체.
+- 결정2(섹션 연결 명시): 안내 문구를 "리포트 전체에 흩어진 조치를 취합..."에서 "아래 '핵심 이슈' 섹션의 근거를 우선순위·담당·시점으로 재구성..."으로 바꿔, 이 표가 '핵심 이슈' 섹션의 파생물임을 문장 자체에 명시(md·html 동일 반영).
+- 결정3(마케팅팀 본문 글씨 확대, 경영진 요약본은 제외): 두 리포트가 하나의 CSS 문자열을 공유해 무분별하게 키우면 경영진 요약본까지 커진다. `_page()`의 기존 미사용 `badge_cls` 파라미터를 컨테이너 클래스로 재활용해(`<div class="container rx">`는 경영진, `<div class="container">`는 마케팅팀) `.container:not(.rx)` 선택자로 마케팅팀 리포트만 스코프. 제목류(`.section-title`·`.plan-h`·`.checklist h3` 등)는 그대로 두고 '읽고 판단하는' 본문만 확대: `.note` 12→14px, `table` 13→15px, `thead th` 12→13px, `.issue-row` 13→15px, `.issue-h` 14→16px, `.plan-lead` 14→16px, `.checklist li` 14→16px, `ol.crit li` 13→15px, `.callout` (Step 33에서 이미 16px로 확대된 상태) →17px(마케팅팀만 1px 더).
+- 변경 파일: generate_report.py(`build_playbook`·`_playbook_md` 제목·안내문·독스트링, build_insight_report 섹션 헤더), generate_html.py(`_page`에 컨테이너 클래스 로직 추가, `_playbook_html` 제목·안내문, `.container:not(.rx)` 본문 폰트 확대 CSS 9줄 추가), SUBMISSION.md(섹션명 언급 갱신).
+- 검증: verify_reproducibility 4변형 전체 통과. insight_report.html의 `<div class="container">`(rx 없음)와 exec_report.html의 `<div class="container rx">` 클래스 분리 확인, 새 제목·연결 문구·확대된 폰트가 마케팅팀 리포트에만 적용되고 경영진 요약본은 기존 크기 그대로인 것 확인.
+
+**[Step 34] 경영진 요약본에 '관련 채널 효율 비교' 섹션 추가 (재원·수혜 2개 채널만)**
+- 배경: 사용자가 "경영진 보고서에 채널별 마케팅 효율을 포함해야 할까?" 질문. 전체 채널 순위표를 넣으면 exec_report의 '1장 승인 문서' 설계 취지(Step 27 — 채널 진단은 마케팅팀 리포트로 위임)가 흐려진다고 답변하고, 대신 이번 재배분 결정에 실제 관련된 재원·수혜 두 채널만 비교하는 절충안을 제안 → 사용자 승인.
+- 결정: 예산 재배분안(`plans`)의 1순위 안에서 source(재원 채널)·target(수혜 채널) 두 곳만 뽑아 광고비·매출·ROAS를 표로 비교. 전체 채널 테이블(마케팅팀 리포트의 '채널별 ROI 순위'와 동일한 성격)은 여전히 넣지 않음 — "이 결정이 왜 이 두 채널 사이인지"를 경영진이 직접 검증할 최소 근거만 제공. 재원이 없으면(plans.empty) 비교할 결정 자체가 없으므로 섹션을 통째로 생략(md는 함수가 None 반환 시 append 안 함, html은 compare_section을 빈 문자열로 둠) — 빈 표를 억지로 만들지 않음.
+- 배치: "예산 재배분 결정 (승인 요청)" 섹션 바로 다음, "관련 채널 효율 비교 (참고)"라는 별도 섹션으로 — 결정(무엇을 승인할지)과 근거(왜 이 채널인지)를 분리해 승인 자체는 위에서 끝나고, 검증하고 싶은 경영진만 아래를 추가로 보는 구조.
+- 숫자 표기: 이 표는 정확한 원 단위(`won()`)를 사용 — 핵심요약의 억/만원 축약(`won_compact`)과 달리, 여기는 '검증용 근거'라 정밀도가 더 중요하다고 판단(마케팅팀 리포트의 다른 상세 테이블과 표기 통일).
+- 변경 파일: generate_report.py(`_exec_channel_compare_md` 신규, `build_exec_report`에서 조건부 append), generate_html.py(`build_exec_html`에 `compare_section` 신규, plans 존재 시에만 렌더).
+- 검증: verify_reproducibility 4변형 전체 통과 — 재원 없음 케이스(A)는 섹션 생략, 재원 있음 케이스(B·C·D)는 재원·수혜 채널 2행 표 정상 노출 확인.
+
+**[Step 36] 경영진 요약본 '예산 재배분 결정' 섹션을 항목 나열 → 서술형 문단으로 전환**
+- 배경: 사용자가 이 섹션(결정 요청/근거/실행 방식/승인 필요 4개 라벨-값 나열)을 모두 서술형으로 표현해달라고 요청.
+- 결정: 4개 항목을 승인권자가 한 번에 읽는 문단으로 이어붙임 — "회수 가능분을 재배분하는 안을 승인 요청 → 그 근거 → 실행 방식(소액 테스트→재측정→확대) → 승인 요청" 순서를 문장 흐름으로 유지해 내용은 그대로 두고 표현만 라벨-값에서 서술형으로 바꿈. 재원 없음 폴백 문구도 "~권고." 개조식 대신 "~권고합니다." 서술형으로 통일.
+- 변경 파일: generate_report.py(`_exec_budget_md`), generate_html.py(`build_exec_html`의 budget 블록 — `<br>`로 나뉜 라벨 4줄을 문단 하나로 교체).
+- 검증: verify_reproducibility 4변형 전체 통과. md·html 모두 한 문단 서술형으로 렌더 확인, 재원 없음 케이스(A)의 폴백 문구도 서술형으로 확인.
+
+**[Step 35] '관련 채널 효율 비교' 표 왼쪽 정렬**
+- 배경: Step 34에서 추가한 광고비·매출·ROAS 컬럼이 `.num`(우측 정렬) 클래스를 써서 다른 숫자 테이블과 통일감은 있었지만, 사용자가 이 표만은 전체 좌측 정렬을 요청.
+- 결정: 해당 테이블의 숫자 셀 클래스를 `num`→`lnum`(기존 CSS `td.lnum { text-align:left }` 재사용)으로 교체. 헤더(`thead th`)는 기본값이 이미 좌측 정렬이라 별도 처리 불필요. 다른 테이블(채널별 ROI 순위 등)의 우측 정렬은 그대로 유지 — 이 표만의 예외.
+- 변경 파일: generate_html.py(`build_exec_html`의 관련 채널 효율 비교 테이블 셀 클래스).
+- 검증: verify_reproducibility 4변형 전체 통과. html에서 세 숫자 컬럼 모두 `class='lnum'`으로 좌측 정렬 렌더 확인.
+
+**[Step 37] 마케팅팀 상세본 요약 박스 제목 '한눈에 보기' → '핵심 요약'으로 통일**
+- 배경: Step 34에서 마케팅팀 요약 박스를 exec_report의 '핵심 요약'과 같은 구조(정의 위치·부연 문구 제거·금액 축약)로 맞췄지만 제목 자체는 그대로 '한눈에 보기'로 남아 있었음. 사용자가 이를 지적하며 제목도 '핵심 요약'으로 바꿔달라고 요청(경영진 리포트 html이 이미 이 제목을 쓰고 있어 그 문구로 통일).
+- 결정: `_executive_summary`(insight md)의 헤딩을 `"## 한눈에 보기"`→`"## 핵심 요약"`으로 변경. html은 `_exec_summary_html`의 기본 `title` 파라미터를 `"한눈에 보기"`→`"핵심 요약"`으로 바꿔 마케팅팀·경영진 두 호출부가 같은 기본값을 쓰게 함(경영진 호출부는 이미 동일 문구를 명시적으로 넘기고 있어 영향 없음). exec_report(경영진) md 자체 제목("## 한눈에 보기")은 이번 요청 범위가 아니라 그대로 둠 — 필요 시 별도 요청으로 처리.
+- 변경 파일: generate_report.py(`_executive_summary` 헤딩, `won_compact` 독스트링의 '한눈에 보기' 표현 정리), generate_html.py(`_exec_summary_html` 기본 title).
+- 검증: verify_reproducibility 5케이스 전체 통과. insight_report.md·html 모두 '핵심 요약' 제목으로 렌더 확인.
+
+**[Step 36] ROAS·CTR·CVR 첫 등장 시점에 작은 글씨 정의 추가**
+- 배경: 사용자가 "ROAS와 같은 지표가 처음 나오는 시점엔 작은 글씨로 설명을 추가해줘" 요청. 점검해보니 ROI·CPA·MER·유료순효율·오가닉은 이미 어딘가에 정의돼 있었지만 ROAS·CTR·CVR은 리포트 전체에 formula 정의가 전혀 없었음(테이블 헤더·문장에 기호만 등장).
+- 결정: 지표별로 "그 리포트에서 실제로 처음 등장하는 지점"을 찾아 그 자리에 작은 글씨 정의를 배치(Step 32의 def-note 패턴 재사용) — 전역 용어집 한 곳에 몰아넣지 않고 등장 문맥에 맞춘 이유는, 독자가 그 용어를 마주친 순간 바로 옆에서 뜻을 확인하게 하는 것이 목적이라 위치가 핵심.
+  - **exec_report(md·html)**: ROAS가 "핵심 요약"보다 늦게, "최근 2주 모멘텀"(채널 인사이트 문장)에서 처음 등장 → 그 섹션 제목 바로 아래에 `ROAS_DEF`(신규 상수) 기반 정의 노출. `roas_def_note_md()`/`_roas_def_note_html()`가 PERF_DEFS/`perf_def_note_md`와 동일한 패턴으로 각자 포맷 렌더.
+  - **insight_report.md**: ROAS·CTR·CVR이 "핵심 수치 요약"(`_summary`) 테이블에서 처음 등장 → 기존 CPA 정의 각주 앞에 ROAS·CTR·CVR 각주 추가(같은 블록에 순서대로 나열).
+  - **insight_report.html**: 구조가 md와 달라 ROAS는 "채널별 ROI 순위" 섹션의 `_roi_bars`(bar-meta에 "ROAS x.xx" 표기)에서 먼저 등장 → 기존 ROI 노트에 ROAS 정의를 이어붙임. CTR·CVR은 `_channel_table` 테이블 컬럼에서 처음 등장 → 기존 CPA 노트 앞에 추가.
+- 변경 파일: generate_report.py(`ROAS_DEF`·`roas_def_note_md` 신규, `_summary()` 노트에 ROAS·CTR·CVR 추가, `build_exec_report`에 모멘텀 섹션 하단 정의 삽입), generate_html.py(`_roas_def_note_html` 신규, `build_exec_html` 모멘텀 섹션에 def-note 삽입, `build_insight_html`의 ROI 노트 확장, `_channel_table`의 CPA 노트 앞에 CTR·CVR 추가).
+- 검증: verify_reproducibility 4변형 전체 통과. exec_report(md·html) 모멘텀 섹션에 ROAS 정의, insight_report(md·html) 핵심 수치 요약/ROI 순위 섹션에 ROAS·CTR·CVR 정의가 각 지표의 실제 첫 등장 위치에 노출되는 것을 확인.
+
+**[Step 38] 마케팅팀 상세본 '핵심 이슈' 카드의 '현상·근거'를 숫자 나열(note) → 서술형(narrative)으로 전환**
+- 배경: 사용자가 핵심 이슈 각 카드의 '현상·근거' 줄이 "광고비 4,442,609 vs 기준선 1,248,328(+255.88%), ROAS 1.24 vs 평소 3.22↓" 식 숫자·기호만 나열돼 이해하기 어렵다고 지적, 풀어서 설명해달라고 요청.
+- 배경 확인: detect_issues.py에는 이미 `narrative` 필드가 있었으나(경영진 리포트 전용 문장형 설명), '광고비급등(과집행)'·'성과급락' 2개 유형에만 채워져 있고 나머지 5개 유형(광고비급락·성과호재·매출이상치·revenue결측·impressions/clicks결측)은 narrative가 note와 동일(설계 주석: "수치 기호 나열로도 충분한 마케팅팀 상세본은 note를 쓰고, 경영진 리포트만 narrative를 쓴다")했음. 이번 요청으로 그 전제가 깨져 마케팅팀도 서술형이 필요해짐.
+- 결정1(narrative 전체 유형 확장): 나머지 5개 이슈 유형 모두에 narrative 문장을 추가 — 기존 2개와 같은 톤("~채널의 ~지표가 ~시점에 ~수준으로, 평소(~원)보다 ~% ~했습니다. ~ 라서 ~합니다/필요합니다")으로 통일. 숫자는 그대로 담되 원인·의미·다음 행동까지 문장으로 풀어씀.
+- 결정2(마케팅팀 리포트 렌더 전환): `_issues()`(md)·`_issue_card`/`_note_card`(html)의 '현상·근거' 표시를 `r['note']`→`r['narrative']`로 교체. `_opportunity()`(오가닉 성장 잠재력)는 별도 스키마(detect_opportunity의 note)라 이번 범위 밖 — 손대지 않음.
+- 버그 수정: `score_and_rank`가 operational/positive/quality/opportunity 카테고리 DataFrame을 만들 때 컬럼을 `['channel','week','type','impact_won','note']`로만 골라 narrative가 누락돼 있었음(loss 카테고리는 이미 narrative를 집계에 포함). `narrative` 컬럼을 추가해 KeyError 수정.
+- 변경 파일: detect_issues.py(5개 유형에 narrative 추가, `score_and_rank`의 컬럼 선택에 narrative 추가), generate_report.py(`_issues()` 5곳 note→narrative), generate_html.py(`_issue_card`·`_note_card` note→narrative).
+- 검증: verify_reproducibility 5케이스 전체 통과. insight_report.md·html의 핵심 이슈 섹션 7개 유형(과집행·급락·성과급락·호재·이상치·매출결측·노출결측) 모두 서술형 문장으로 렌더 확인. exec_report는 기존부터 narrative를 썼으므로 변화 없음(회귀 없음).
+
+**[Step 39] '주차별 채널 효율 추이' 섹션을 리더 교체·추세 신호가 있을 때만 표로 펼침(조건부 렌더)**
+- 배경: 사용자가 이 섹션이 필요 없어 보인다고 문제 제기. 검토 결과, 이 섹션의 목적(합산 ROI 순위가 못 보는 '어느 주에 리더가 바뀌었나·최근 추세'로 예산 이동 타이밍을 잡는 것) 자체는 유효하지만, 실제 데이터(이메일이 8주 내내 1위 유지)에서는 인사이트가 "변화 없음" 한 줄뿐인데 8행×4열 표를 통째로 보여줘 정보량 대비 스캔 비용이 컸음. 완전 삭제(타이밍 신호를 보는 유일한 창을 잃음) 대신, 신호가 있을 때만 표를 펼치는 조건부 렌더링으로 절충 — 사용자 승인.
+- 결정: `build_weekly_channel_trend`가 `has_signal`(bool) 필드를 추가로 반환 — 리더 교체 또는 창 전반/후반 ±15% 이상 추세가 하나라도 탐지되면 True, "N주 내내 1위 유지"만 있거나 인사이트가 전혀 없으면(fallback) False. `_weekly_trend_md`(md)·`_weekly_trend_html`(html) 모두 `has_signal`이 False면 표 없이 인사이트 한 줄("...유지했습니다. (주차별 표는 리더 교체·뚜렷한 추세가 있을 때만 표시)")만 렌더하고, True면 기존처럼 전체 표+인사이트 리스트를 렌더.
+- 영향 범위: 채널 평가·이슈·예산 재배분 등 다른 섹션은 무관 — 이 섹션의 표 노출 여부만 변경. exec_report는 이 섹션을 원래 쓰지 않아 영향 없음.
+- 변경 파일: generate_report.py(`build_weekly_channel_trend`에 `has_signal`, `_weekly_trend_md` 조건분기), generate_html.py(`_weekly_trend_html` 조건분기).
+- 검증: verify_reproducibility 5케이스 통과. 원본 데이터·A·B·C(모두 "N주 내내 유지"만 있어 has_signal=False)는 한 줄 요약만, D(12주, 메타광고 +16% 상승 추세 탐지돼 has_signal=True)는 표+인사이트 2건 모두 렌더되는 것을 직접 확인.
+
+**[Step 37] 마케팅팀 리포트 핵심 이슈: 현상/근거 분리 + 명사형 종결**
+- 배경: 사용자가 마케팅팀 리포트(insight_report)의 핵심 이슈에서 "현상·근거"가 한 줄에 뭉쳐 있어 분리가 필요하다고 지적하고, 서술형 문장은 유지하되 종결을 "~습니다"체 대신 "급증·추정" 같은 명사형으로 바꿔달라고 요청.
+- 결정: detect_issues.py의 `_issue()` 스키마를 `narrative`(단일 문단) → `phenomenon`(현상: 무슨 일이 있었나) + `evidence`(근거: 왜 그렇게 보나·다음에 뭘 확인해야 하나) 2필드로 분리. 6개 탐지 유형(광고비급등·급락·성과급락·성과호재·매출이상치·결측 2종) 모두 문장을 현상/근거로 나누고 "~습니다"→"급증·감소·증가·추정·필요" 등 명사형으로 재작성.
+- 렌더링: md `_issues()`는 `- 현상: …` / `- 근거: …` 두 줄로, html `_issue_card`/`_note_card`는 `<div class='issue-row'><b>현상</b>…</div>` / `<b>근거</b>…</div>` 두 div로 분리. 5(md)+2(html) 렌더 지점 모두 갱신.
+- 영향 범위 점검: exec_report.html의 "핵심 이슈" 섹션(`build_exec_html`)이 옛 `narrative` 필드를 참조하고 있어 필드 제거 시 깨질 뻔함 → phenomenon+evidence를 합쳐 한 줄로 유지(exec는 사용자가 분리를 요청한 대상이 아니므로 기존 결합형 그대로 보존, 필드명만 갱신). score_and_rank의 groupby 집계·category 컬럼 선택도 phenomenon/evidence로 교체.
+- 변경 파일: detect_issues.py(`_issue()` 시그니처·6개 탐지기 문장 재작성, `score_and_rank` 집계 컬럼), generate_report.py(`_issues()` 5개 렌더 지점), generate_html.py(`_issue_card`·`_note_card` 2개 렌더 지점, `build_exec_html`의 narrative 참조 수정).
+- 검증: verify_reproducibility 4변형 전체 통과. loss(이슈·정정)·operational(관찰)·quality(품질)·positive(긍정) 4개 카테고리 모두 현상/근거 두 줄 분리 및 명사형 종결(급증·감소·증가·추정·필요·판단) 확인.
+
+**[Step 40] insight_report.html '핵심 이슈' 카테고리 제목(실행 가능한 손실·데이터 정정 필요 등) 글씨 확대**
+- 배경: 사용자가 각 이슈 카테고리 제목이 너무 작아 잘 안 보인다고 지적.
+- 결정: `_issue_cards()`의 로컬 헬퍼 `_h4`가 카테고리 제목 5개(실행 가능한 손실·데이터 정정 필요·운영 관찰·주목할 긍정 신호·데이터 수집 품질 이슈)를 모두 렌더 — `font-size:13px`→`16px`로 확대(섹션 제목 19px보다는 작고 본문 13~14px보다는 커서 위계 유지). `_reallocation_section_html`에서 같은 `_h4` 함수를 별도로 재정의해 쓰는 3곳(재원 요약·재배분안·우선순위)은 이번 요청 범위(핵심 이슈 섹션)가 아니라 13px 그대로 유지.
+- 변경 파일: generate_html.py(`_issue_cards`의 `_h4` font-size).
+- 검증: verify_reproducibility 5케이스 전체 통과. insight_report.html에서 5개 카테고리 제목만 16px로 렌더되고 예산 재배분 섹션의 다른 h4는 13px로 그대로인 것을 확인.
+
+**[Step 41] 두 리포트 html에서 장식용 이모지 전부 제거**
+- 배경: 사용자가 두 리포트(insight_report.html·exec_report.html)에서 이모티콘을 모두 제거해달라고 요청.
+- 결정: 헤더·섹션 제목·배지에 붙어 있던 장식용 이모지 12종(✅🎯💰👥📅📊🐍📌💡📈📉🌱, 총 24곳 — 체크리스트·플레이북·핵심 성과 지표·채널 ROI·핵심 이슈·전주 대비·주차별 추이·채널 평가·오가닉 성장·예산 재배분·관련 채널 비교·경영진 헤더 등)를 모두 제거. `☐`(체크리스트 CSS `content`의 빈 체크박스)와 `➜`(재배분안 카드의 자금 흐름 화살표)는 장식이 아니라 UI 구조를 나타내는 타이포그래픽 기호라 이번 범위에서 제외 — 제거하면 체크리스트·흐름도의 의미가 사라짐.
+- 변경 파일: generate_html.py(섹션 제목·헤더·배지 문자열에서 이모지+뒤 공백 일괄 제거).
+- 검증: verify_reproducibility 5케이스 전체 통과. insight_report.html·exec_report.html의 모든 section-title·header·badge에서 이모지 없이 텍스트만 렌더되는 것을 확인. md 리포트는 원래 이모지를 쓰지 않아 영향 없음.
+
+**[Step 38] 마케팅팀 리포트 목차 추가 + 유사 섹션 병합 (9개→5·6개)**
+- 배경: 사용자가 insight_report에 "섹션별 목차를 만들고, 성격이 비슷한 것들끼리 묶든 병합하든 탈락시키든 하자"고 요청. 기존엔 데이터개요·핵심수치요약·ROI순위·이슈·전주대비변화율·주차별ROAS추이·채널평가·오가닉·예산재배분·의사결정로그까지 9~10개 numbered 섹션이 나열돼 목차 없이는 구조를 파악하기 어려웠음.
+- 결정(병합 기준 — "같은 질문에 답하는 섹션"을 하나로): 
+  1. **데이터 개요 + 핵심 수치 요약** → "데이터 개요 및 핵심 수치 요약"(둘 다 '분석 대상·전체 숫자' 배경 정보).
+  2. **채널별 ROI 순위 + 채널 평가(시장 벤치마크) + 오가닉 성장 잠재력** → "채널 효율 평가 (ROI · 시장 벤치마크 · 오가닉)"(모두 '채널을 어떻게 평가하나'라는 같은 질문 — 내부비교/외부비교/성장가능채널의 3단 구성).
+  3. **전주 대비 변화율 + 주차별 채널 효율 추이(ROAS)** → "추세 (전주 대비 · 주차별 ROAS)"(모두 '시간에 따른 변화').
+  - 병합하지 않은 것: 이슈(비즈니스 임팩트 순)·예산 재배분 기획안·의사결정 로그 요약은 각자 고유 목적(문제 진단·처방·방법론)이 명확해 그대로 유지. 오가닉을 '탈락'시키지 않고 채널평가 그룹의 하위 소제목으로 흡수한 이유: 유의미한 오가닉 매출이 있을 때만 조건부로 나타나는 콘텐츠라 삭제보다 통합이 정보손실이 없음.
+- 목차: md는 제목 아래 "## 목차"에 `1. [제목](#sec1)` 형태 앵커 링크, 각 섹션 헤딩 바로 위에 `<a id="sec{i}"></a>`를 심어 렌더러의 자동 슬러그 생성 방식에 의존하지 않고 항상 동작하게 함. html은 실행 플레이북 아래 별도 `.toc` 섹션(`<ol class="toc-list">`)에 `href="#sec{i}"` 링크, 각 `.section` div에 `id="sec{i}"` 부여.
+- 하위 구조: 병합된 섹션 내부는 `###`(md) / `<h4 class="section-sub">`(html)로 소제목을 나눠 병합 이전 정보 단위를 그대로 보존 — 병합은 '목차 항목 수 축소'가 목적이고 내용 손실은 없음.
+- 결과: md 9→6 numbered 섹션(1.데이터개요및핵심수치요약 2.이슈 3.채널효율평가 4.추세 5.예산재배분기획안 6.의사결정로그), html 5개(md의 의사결정 로그는 원래도 html에는 없었음 — 대시보드 성격상 방법론 로그는 md 전용으로 유지).
+- 변경 파일: generate_report.py(`build_report` 섹션 병합·목차·앵커), generate_html.py(`build_insight_html` 섹션 병합·목차 nav·section-sub 서브헤딩·id 부여, `_reallocation_section_html` 제목에 "5." 번호 추가, CSS `.section-sub`·`.toc`·`.toc-list` 추가).
+- 검증: verify_reproducibility 4변형 전체 통과 — REQUIRED 문자열 목록('데이터 개요'·'핵심 수치'·'ROI'·'이슈'·'변화율'·'주차별 채널 효율 추이'·'예산 재배분 기획안')이 병합 후에도 하위 소제목으로 모두 존재해 문제없음. md·html 모두 목차 링크·앵커 id 정상 생성 확인.
+
+**[Step 39] 섹션 순서 재배치(채널평가·추세를 이슈보다 앞으로) + 목차·번호 제거**
+- 배경: Step 38 직후 사용자에게 섹션 순서가 적합한지 판단을 요청받음. 검토 결과, 기존 순서(개요→이슈→채널평가→추세→예산재배분→로그)는 독자가 채널 전체 그림(채널평가)·평소 패턴(추세)을 보기 전에 구체적 사건(이슈)부터 마주치는 문제가 있다고 판단해 재배치를 제안 → 사용자 승인. 승인과 함께 "목차도 다 지우고 섹션별 인덱싱도 모두 지워라"는 추가 지시.
+- 결정1(순서): 개요 → **채널 효율 평가**(누가 잘·못하나, 전체 그림) → **추세**(평소 패턴이 어떻게 흘러왔나) → 이슈(그 패턴에서 벗어난 구체적 문제) → 예산 재배분(이슈 바로 다음 유지 — Step 27의 진단→처방 인접성 설계는 보존) → 의사결정 로그(항상 마지막, 부록 성격).
+- 결정2(목차·번호 제거): Step 38에서 추가한 목차(md `## 목차` 링크 목록·앵커 `<a id="sec{i}">`, html `.toc` 섹션·`id="sec{i}"`)와 섹션 제목의 "1./2./..." 번호를 전부 제거. 병합된 섹션 내부의 소제목(`###`/`<h4 class="section-sub">`)은 그대로 유지 — 목차·번호만 없애고 병합 자체(정보 그룹핑)는 유지하는 것이 요청의 취지.
+- 변경 파일: generate_report.py(`build_report` sections 순서 재배치, toc 생성·앵커 제거, 번호 없는 `## {title}`로 렌더), generate_html.py(`build_insight_html` body 순서 재배치, `.toc` 마크업·`id="sec{i}"` 제거, 섹션 제목 번호 제거, `_reallocation_section_html` 제목 번호 제거, CSS `.toc`/`.toc-list` 규칙 삭제 — `.section-sub`는 유지).
+- 검증: verify_reproducibility 4변형 전체 통과. md·html 모두 새 순서(데이터개요→채널평가→추세→이슈→예산재배분→의사결정로그) 확인, 목차·번호 문자열 완전히 없음(grep 0건) 확인.
+
+**[Step 40] '지금 당장 할 일' 체크리스트를 '이번 주 업무 우선순위'(플레이북)에 흡수**
+- 배경: 사용자가 "지금 당장 할 일(예산 재배분 섹션 안의 체크리스트)을 이번 주 업무 우선순위와 합치는 게 어떨까? 이슈 섹션도 겹치지 않나?"라고 물어옴. 검토 결과: 체크리스트는 플레이북 1순위 항목("메타광고 과집행 차단 후 네이버광고에 재배분")을 3단계로 풀어놓은 것뿐이라 실제 중복이지만, 이슈 섹션은 플레이북이 커버 못하는 전체 진단 근거(현상·근거·발생빈도·최근지속여부)를 담고 있어 성격이 다르다고 판단 → 체크리스트만 흡수, 이슈는 유지하기로 사용자와 합의.
+- 결정: `build_action_checklist`(reallocate.py, 3단계: 과집행 차단→수혜처 테스트 증액→ROAS 재측정)를 플레이북 렌더 함수(`_playbook_md`/`_playbook_html`)의 1순위 항목 바로 아래에 "1순위 실행 단계" 하위 목록으로 붙이고, 예산 재배분 기획안 섹션에서는 독립 체크리스트를 제거(문구만 "실행 체크리스트는 '이번 주 업무 우선순위'로 통합했다"로 안내). html의 `_checklist_html` 함수는 더 이상 필요 없어 제거하고 관련 CSS(`.checklist`)도 `.pb-steps`로 대체.
+- 부수 발견 및 수정: 테스트 실행 중 `detect_opportunity`(오가닉 성장 잠재력)가 Step 37에서 제거한 `narrative=` 키워드를 여전히 쓰고 있어 크래시 발견 — 해당 narrative는 어디서도 렌더링되지 않는 죽은 코드였음(`_opportunity()`는 `r['note']`만 사용)을 확인하고 통째로 제거.
+- 변경 파일: generate_report.py(`_playbook_md`에 체크리스트 흡수, `_reallocation_section_md`에서 체크리스트 제거), generate_html.py(`_playbook_html`에 체크리스트 흡수, `_checklist_html` 삭제, `_reallocation_section_html`에서 체크리스트 호출 제거, CSS `.checklist`→`.pb-steps`), detect_issues.py(`detect_opportunity`의 죽은 `narrative` 변수·인자 제거).
+- 검증: verify_reproducibility 4변형 전체 통과(오가닉 있음 케이스 포함 — 부수 버그가 이 케이스에서만 드러났었음). md·html 모두 "지금 당장 할 일"이라는 독립 섹션이 완전히 사라지고, 플레이북 1순위 아래 "1순위 실행 단계"로 통합된 것 확인.
+
+**[Step 41] '1순위 실행 단계' 완전 제거 — 플레이북 표와 중복이라 판단**
+- 배경: Step 40에서 체크리스트를 플레이북 1순위 항목 아래 "1순위 실행 단계" 하위 목록으로 옮겼는데, 사용자가 재검토 후 "그 제안들이 어차피 우선순위(표)와 같은 맥락이라 제거해달라"고 요청.
+- 결정: 플레이북 표의 '할 일'·'근거' 컬럼이 이미 실행 맥락(무엇을·왜)을 담고 있어, 3단계로 풀어쓴 하위 목록은 정보 손실 없이 제거 가능하다고 판단. `_playbook_md`/`_playbook_html`에서 "1순위 실행 단계" 블록을 완전히 삭제.
+- 정리: 이 블록에서만 쓰던 `build_action_checklist(reallocate.py)`가 이제 어디서도 호출되지 않아 함수 자체를 삭제하고, 양쪽 파일의 import·CSS(`.pb-steps`)도 함께 정리 — 죽은 코드를 남기지 않음.
+- 변경 파일: reallocate.py(`build_action_checklist` 함수 삭제), generate_report.py(`_playbook_md`에서 실행단계 블록 제거, import 정리), generate_html.py(`_playbook_html`에서 실행단계 블록 제거, import·CSS `.pb-steps` 정리).
+- 검증: verify_reproducibility 4변형 전체 통과. md·html에서 "1순위 실행 단계"·"지금 당장 할 일" 문자열 완전히 없음(grep 0건) 확인.
+
+**[Step 42] 이슈 섹션 분류·정렬 기준 명시 + 태그·정렬 일관화**
+- 배경: 사용자가 "이슈가 여러 개인데 분류 기준이 명확하지 않고 정렬 순서도 애매하다. 담당처 태그를 하든 긴급도로 정렬하든 명확히 해달라"고 요청. 점검 결과 실제로 두 가지 결함이 있었음: ①로스(loss) 카드는 `[레버]` 태그가 있지만 운영관찰·품질·긍정 카드는 태그가 아예 없어(주차만 표시) 분류축이 카드 종류마다 달라 보였음. ②로스 계열은 임팩트(₩) 큰 순으로 정렬돼 있었지만 운영관찰·품질·긍정 3개 카테고리는 탐지된 순서(채널·주차 순회 순) 그대로라 정렬 기준이 전혀 없었음.
+- 결정(2축 분류를 명시적으로 문서화 + 일관화):
+  1. **분류 축1(매출·비용 영향 유무)**: 손실(실행가능한 손실·데이터 정정, category=loss) vs 관찰/품질(운영 관찰·데이터 품질, 임팩트 없음) vs 참고(긍정 신호, 문제 아님) — 기존 5개 그룹 구조는 유지(이미 타당한 기준이었음, Step 24~25에서 다진 구분), 다만 이 기준을 이슈 섹션 상단에 명시적으로 문장으로 선언.
+  2. **분류 축2(담당·조치처, 레버 태그)**: 예산/운영·크리에이티브/데이터·트래킹 — 기존엔 loss 카드에만 있던 `[레버]` 태그를 운영관찰·품질·긍정 카드에도 동일하게 추가(`_note_card` 수정, md 헤더에도 `` `[{lever}]` `` 삽입). 이제 5개 그룹 모두 같은 태그 체계를 공유.
+  3. **정렬 기준**: 손실 계열은 그대로 임팩트(₩) 내림차순(유지). 운영관찰·품질·긍정은 임팩트가 없거나 무의미해 대신 **최근 발생 주차 내림차순**(최신이 먼저)을 긴급도의 대체 지표로 채택 — `score_and_rank`(detect_issues.py)에서 `calculate._week_key`로 정렬해 한 곳에서만 계산(md·html 공유).
+  4. 각 소제목에 정렬 기준을 괄호로 병기(예: "실행 가능한 손실 (예산·운영 — 바로 조치, **임팩트 순**)", "운영 관찰 (손실은 아니나 확인 필요, **최근 발생 순**)") — 독자가 섹션 제목만 보고도 정렬 근거를 알 수 있게.
+- 변경 파일: detect_issues.py(`calculate._week_key` import, `score_and_rank`에서 operational/positive/quality에 'lever' 컬럼 추가 + 최근 발생 주차 내림차순 정렬), generate_report.py(`_issues()` 분류·정렬 기준 안내문 추가, 소제목에 정렬기준 병기, 운영관찰/품질/긍정 헤더에 `[레버]` 태그 추가), generate_html.py(`_note_card`에 레버 태그 추가, `_issue_cards()` 인트로·소제목 갱신).
+- 검증: verify_reproducibility 4변형 전체 통과. html에서 품질 이슈가 W3→W2(최신 먼저) 순으로, 모든 카드(관찰·품질·긍정)에 `[예산]`/`[운영·크리에이티브]`/`[데이터·트래킹]` 태그가 일관되게 표시되는 것 확인.
+
+**[Step 43] 이슈 분류를 5개→3그룹(레버 단일 기준)으로 재조정**
+- 배경: 사용자가 Step 42로도 여전히 "중구난방으로 보인다"고 재지적. 직전 대화에서 분석한 근본 원인을 재확인: 기존 5개 그룹(실행가능한 손실·데이터 정정·운영 관찰·데이터 품질·긍정 신호)은 사실 '임팩트 유무'와 '레버'라는 두 기준이 섞여 있었고, "운영 관찰 vs 데이터 품질"의 분리도 실은 "손실/정정"과 같은 레버 기준을 임팩트=0 그룹에 다시 적용한 것뿐이라 사용자에게는 기준이 중복·불명확하게 느껴짐.
+- 결정: **레버(담당·조치처) 하나의 기준**으로 재편 — 예산 / 운영·크리에이티브 / 데이터·트래킹 3그룹 + 참고(긍정 신호, 문제가 아니므로 애초에 조치 레버 개념과 안 맞아 별도). 같은 레버 안에서 임팩트(₩) 유무에 따라 금액 표시만 다르게 하고(있으면 표기, 없으면 생략) 그룹 자체는 나누지 않음 — 예산 그룹에 과집행(임팩트 있음)과 집행축소(임팩트 없음)가 함께 들어가고, 데이터·트래킹 그룹에 매출이상치·revenue결측(임팩트 있음)과 impressions/clicks결측(임팩트 없음)이 함께 들어감. 정렬은 각 그룹 안에서 임팩트(₩) 내림차순 — 임팩트 없는 항목은 자연히 하단.
+- 프레이밍 보존: "데이터·트래킹 손실은 예산 손실이 아니다"라는 기존 핵심 프레이밍(Step 24~25)은 그룹 자체가 아니라 그룹 하단 각주("이 금액은 잃은 돈이 아니라 데이터가 왜곡·누락된 규모")로 계속 유지 — 재배분 재원과 무관함을 명확히 함.
+- 세부 버그 수정: ①`pd.concat`으로 loss(weeks·frequency 보유)와 operational/quality(week 단수)를 합치면 없는 컬럼이 NaN으로 채워져 `'weeks' in r.index`가 항상 True가 되는 버그 → `pd.notna(r.get('weeks'))`로 교체. ②성과호재(긍정 신호)를 손실 카드와 같은 렌더러로 통합하면서 "기회손실"이라는 손실 프레이밍 라벨이 그대로 붙는 오류 발견 → 타입이 '성과호재'면 "매출 증가분"으로 라벨 전환. ③html에서 긍정 신호 카드가 레버(운영·크리에이티브) 기준으로 색상 클래스를 받아 예산 경고색(주황)으로 보이는 문제 → `.issue.positive`(녹색) 클래스 신설.
+- 변경 파일: generate_report.py(`_issue_block_md`·`_SHOW_STATUS_TYPES` 신규, `_issues()` 전면 재작성 — 레버 3그룹+참고), generate_html.py(`_issue_card` 통합 렌더러로 `_note_card` 대체, `_issue_cards()` 전면 재작성, `_SHOW_STATUS_TYPES` import, CSS `.issue.positive` 추가).
+- 검증: verify_reproducibility 4변형 전체 통과. md·html 모두 예산/운영·크리에이티브/데이터·트래킹 3그룹 + 참고(긍정 신호) 구조로 렌더 확인. 예산 그룹 안에 과집행(임팩트 표시)·집행축소(임팩트 생략)가 함께, 데이터·트래킹 그룹 안에 매출이상치/결측(임팩트 표시)·노출·클릭결측(임팩트 생략)이 함께 임팩트 내림차순으로 정렬됨을 확인.

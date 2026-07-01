@@ -32,7 +32,14 @@ def main():
     c['week'] = c['week'].map(remap)
     c.to_csv(os.path.join(OUT, 'variant_c_relabel.csv'), index=False)
 
-    for name in ('variant_a_short', 'variant_b_noorganic', 'variant_c_relabel'):
+    # 12주 변형: 원본 W1-W8 + 원본 W1-W4를 W9-W12로 재라벨해 이어붙임(실제 분포 재사용, 숫자 조작 없음).
+    # 롤링 윈도우가 최근 8주(W5-W12)만 분석하는지 검증하기 위한 픽스처.
+    ext = df[df['week'].isin(['W1', 'W2', 'W3', 'W4'])].copy()
+    ext['week'] = ext['week'].map({'W1': 'W9', 'W2': 'W10', 'W3': 'W11', 'W4': 'W12'})
+    d12 = pd.concat([df, ext], ignore_index=True)
+    d12.to_csv(os.path.join(OUT, 'variant_d_twelveweeks.csv'), index=False)
+
+    for name in ('variant_a_short', 'variant_b_noorganic', 'variant_c_relabel', 'variant_d_twelveweeks'):
         f = os.path.join(OUT, name + '.csv')
         n = len(pd.read_csv(f))
         print(f'생성: {name}.csv  ({n}행)')
